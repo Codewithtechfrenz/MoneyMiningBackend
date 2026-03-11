@@ -46,6 +46,9 @@ router.post('/changePassword', helper.app_maintenance, helper.auth, userControll
 
 router.post('/forgotPassword', helper.app_maintenance, helper.auth, userController.forgotPassword);
 
+router.post('/updateProfileImage', helper.app_maintenance, helper.auth, userController.updateProfileImage);
+
+router.post('/updatePin', helper.app_maintenance, helper.auth, userController.updatePin);
 
 
 

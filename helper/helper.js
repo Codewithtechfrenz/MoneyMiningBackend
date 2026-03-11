@@ -42,7 +42,7 @@ helper.app_maintenance = (req, res, next) => {
 ================================ */
 helper.auth = (req, res, next) => {
 
-   // req.user = decoded; // attach user info
+    // req.user = decoded; // attach user info
     // req.user = { userId:5 }
     // req.user.userId =5
     // console.log("req.user: ", req.user);
@@ -54,7 +54,7 @@ helper.auth = (req, res, next) => {
 
         if (!authHeader) {
             return res.json({
-                status: 0,
+                status: 6,
                 message: "Authorization token required"
             });
         }
@@ -63,7 +63,7 @@ helper.auth = (req, res, next) => {
 
         if (!token) {
             return res.json({
-                status: 0,
+                status: 6,
                 message: "Invalid token format"
             });
         }
@@ -71,7 +71,7 @@ helper.auth = (req, res, next) => {
         jwt.verify(token, "SECRET@KEY", (err, decoded) => {
             if (err) {
                 return res.json({
-                    status: 0,
+                    status: 6,
                     message: "Invalid or expired token"
                 });
             }
@@ -84,7 +84,7 @@ helper.auth = (req, res, next) => {
     } catch (err) {
         console.log("Auth error:", err);
         return res.json({
-            status: 0,
+            status: 6,
             message: "Authentication failed"
         });
     }

@@ -171,7 +171,42 @@ exports.addBankDetails = async (req, res) => {
 
 
 
+exports.getBankList = async (req, res) => {
+    try {
+        // Query active banks
+        let query = "SELECT bank_name FROM mo_bank_list WHERE status = 1 ORDER BY bank_name ASC";
 
+        db.mainDb(query, [], (err, data) => {
+            if (err) {
+                return res.json({
+                    status: 0,
+                    message: "DB error"
+                });
+            }
+
+            if (data.length === 0) {
+                return res.json({
+                    status: 1,
+                    message: "No banks found",
+                    data: []
+                });
+            }
+
+            return res.json({
+                status: 1,
+                message: "Bank list fetched successfully",
+                data: data
+            });
+        });
+
+    } catch (err) {
+        console.log("Error in getBankList:", err);
+        return res.json({
+            status: 0,
+            message: "Something went wrong"
+        });
+    }
+};
 
 
 

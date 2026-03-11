@@ -373,6 +373,122 @@ exports.loginVerify = async (req, res) => {
     }
 };
 
+
+exports.updateProfileImage = async (req, res) => {
+    try {
+        const userId = req.user.userId; // from JWT middleware
+        const { profile_img } = req.body;
+
+        const validate = new Validator(req.body, {
+            profile_img: 'required'
+        });
+
+        if (!(await validate.check())) {
+            const msg = Object.values(validate.errors)
+                .map(e => e.message)
+                .join(', ');
+            return res.json({ status: 0, message: msg });
+        }
+
+        const updateQuery = `UPDATE mo_user_info SET profile_img=? WHERE id=?`;
+
+        db.mainDb(updateQuery, [profile_img, userId], (err, data) => {
+            if (err) {
+                console.log(err);
+                return res.json({ status: 0, message: "DB error" });
+            }
+
+            return res.json({
+                status: 1,
+                message: "Profile image updated successfully",
+                profile_img: profile_img
+            });
+        });
+
+    } catch (err) {
+        console.log(err);
+        return res.json({ status: 0, message: "Something went wrong" });
+    }
+};
+
+
+exports.updatePin = async (req, res) => {
+    try {
+        let reqData = req.body;
+        console.log("reqData: ", reqData);
+
+        const validate = new Validator(reqData, {
+            type: 'required|integer|min:1|max:2', // 1 = enable, 2 = disable
+            pin: 'integer|minLength:4|maxLength:4' // required only if type=1, validated below
+        });
+
+        const matched = await validate.check();
+
+        if (!matched) {
+            let error_message = '';
+            Object.keys(validate.errors).forEach(function (key) {
+                if (validate.errors[key].message) {
+                    error_message += (error_message ? ', ' : '') + validate.errors[key].message;
+                }
+            });
+
+            return res.json({
+                status: 0,
+                responseCode: 'fail',
+                message: error_message
+            });
+        }
+
+        const userId = req.user.userId;
+
+        if (reqData.type == 1) {
+            // Enable PIN → pin is required
+            if (!reqData.pin) {
+                return res.json({
+                    status: 0,
+                    responseCode: 'fail',
+                    message: "PIN is required to enable"
+                });
+            }
+
+            const query = `UPDATE mo_user_info SET login_pin=?, login_pin_status=1 WHERE id=?`;
+            db.mainDb(query, [reqData.pin, userId], (err, data) => {
+                if (err) return res.json({ status: 0, message: "DB error" });
+
+                return res.json({
+                    status: 1,
+                    responseCode: 'success',
+                    message: "PIN enabled successfully"
+                });
+            });
+
+        } else if (reqData.type == 2) {
+            // Disable PIN
+            const query = `UPDATE mo_user_info SET login_pin=NULL, login_pin_status=0 WHERE id=?`;
+            db.mainDb(query, [userId], (err, data) => {
+                if (err) return res.json({ status: 0, message: "DB error" });
+
+                return res.json({
+                    status: 1,
+                    responseCode: 'success',
+                    message: "PIN disabled successfully"
+                });
+            });
+
+        } else {
+            return res.json({
+                status: 0,
+                responseCode: 'fail',
+                message: "Invalid type"
+            });
+        }
+
+    } catch (err) {
+        console.log(err);
+        return res.json({ status: 0, responseCode: 'fail', message: "Something went wrong" });
+    }
+};
+
 exports.info = async (req, res) => {
     try {
 
@@ -399,6 +515,8 @@ exports.info = async (req, res) => {
             u.is_kyc_verified,
             u.is_bank_verified,
             u.referral_code,
+            u.login_pin_status,
+            u.login_pin,
             uw.main_wallet,
             uw.wallet,
             uw.hold
@@ -1321,7 +1439,7 @@ exports.forgotPassword = async (req, res) => {
 
                 let updateQuery = "UPDATE mo_user_info SET mail_otp=?, otp_expiry=? WHERE email=?";
 
-                db.mainDb(updateQuery, [otp, expiry, reqData.email], async (uErr,uData) => {
+                db.mainDb(updateQuery, [otp, expiry, reqData.email], async (uErr, uData) => {
                     console.log("uData: ", uData);
                     console.log("uErr: ", uErr);
 
@@ -1341,10 +1459,10 @@ exports.forgotPassword = async (req, res) => {
 
                     // if (mailStatus.status == 1) {
 
-                        return res.json({
-                            status: 1,
-                            message: "OTP sent to email"
-                        });
+                    return res.json({
+                        status: 1,
+                        message: "OTP sent to email"
+                    });
 
                     // } else {
 
