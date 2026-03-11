@@ -56,17 +56,38 @@
 const mysql = require("mysql");
 
 // Create pool once
+// const pool = mysql.createPool({
+//     connectionLimit: 50,          // 50 is enough, 50k is insane
+//     connectTimeout: 30 * 1000,    // 30 sec
+//     acquireTimeout: 60 * 1000,    // 1 min
+//     timeout: 60 * 1000,
+//     multipleStatements: true,
+//     host: "localhost",
+//     user: "root",
+//     password: "",
+//     database: "moneymine"
+// });
+
+
 const pool = mysql.createPool({
-    connectionLimit: 50,          // 50 is enough, 50k is insane
-    connectTimeout: 30 * 1000,    // 30 sec
-    acquireTimeout: 60 * 1000,    // 1 min
-    timeout: 60 * 1000,
-    multipleStatements: true,
-    host: "localhost",
-    user: "root",
-    password: "",
-    database: "moneymine"
+    
+    host: "3.111.113.161",
+
+    user: "nodeuser",
+
+    password: "NodePassword123!",
+
+    database: "money_mining",
+
+    port: 3306,
+
+    connectionLimit: 50,
+
+    multipleStatements: true
+
 });
+ 
+
 
 // Main DB query function (callback-style)
 exports.mainDb = async function (query, values, callback) {

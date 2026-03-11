@@ -16,6 +16,7 @@ var adminRouter = require('./routes/adminRouter');      // now includes ticket r
 var paymentsRoute = require('./routes/paymentRouter');
 var uploadRoute = require('./routes/uploads');
 var exampleRouter = require('./routes/exampleRouter');
+const { version } = require('os');
 
 const PORT = process.env.PORT;
 
@@ -30,9 +31,9 @@ app.set('view engine', 'pug');
 app.use(cors({
   origin: ["http://localhost:3000",
     "https://admin.moneymining.co.in"
-  ], 
-  
-  methods: ['GET','POST','OPTIONS'],
+  ],
+
+  methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'] // ⚠ crucial
 }));
 
@@ -55,6 +56,10 @@ app.use('/admin', adminRouter);       // admin + ticket routes
 app.use("/upload", uploadRoute);
 app.use('/payments', paymentsRoute);
 app.use('/example', exampleRouter);
+
+app.use('/',function (req, res)  {
+  res.json({ status: 1, message: "Welcome to Money Mining API", version: "1.0.0" });
+});
 
 // ================== 404 HANDLER ==================
 app.use(function (req, res, next) {

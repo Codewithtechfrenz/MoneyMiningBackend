@@ -42,6 +42,9 @@ router.post('/userDailyReferralProfit', helper.app_maintenance, helper.auth, use
 
 router.post('/transactionHistory', helper.app_maintenance, helper.auth, userController.transactionHistory);
 
+router.post('/changePassword', helper.app_maintenance, helper.auth, userController.changePassword);
+
+router.post('/forgotPassword', helper.app_maintenance, helper.auth, userController.forgotPassword);
 
 
 

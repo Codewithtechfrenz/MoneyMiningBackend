@@ -125,80 +125,80 @@ exports.createAccount = async (req, res) => {
 
                             // if (mailStatus.status == 1) {
 
-                                if (updateUsedMailStatus.status == 1 && updateUsedMobStatus.status == 1) {
+                            if (updateUsedMailStatus.status == 1 && updateUsedMobStatus.status == 1) {
 
 
-                                    let insertQuery = "INSERT INTO mo_user_info SET ?";
+                                let insertQuery = "INSERT INTO mo_user_info SET ?";
 
-                                    let insertObj = {
-                                        username: reqData.username,
-                                        email: reqData.email,
-                                        mblno: reqData.mobile,
-                                        password: reqData.password,
-                                        referral_code: userReferralCode,
-                                        referred_from: referredFrom
-                                    };
+                                let insertObj = {
+                                    username: reqData.username,
+                                    email: reqData.email,
+                                    mblno: reqData.mobile,
+                                    password: reqData.password,
+                                    referral_code: userReferralCode,
+                                    referred_from: referredFrom
+                                };
 
-                                    await db.mainDb(insertQuery, insertObj, async (insertErr, insertData) => {
-                                        console.log("insertErr: ", insertErr);
-                                        if (insertErr || !insertData) {
+                                await db.mainDb(insertQuery, insertObj, async (insertErr, insertData) => {
+                                    console.log("insertErr: ", insertErr);
+                                    if (insertErr || !insertData) {
 
-                                            return res.json({ status: 0, message: "Error occurred when inserting user data" });
+                                        return res.json({ status: 0, message: "Error occurred when inserting user data" });
 
-                                            // } else if (insertData.affectedRows === 1) {
+                                        // } else if (insertData.affectedRows === 1) {
 
-                                            //     return res.json({
-                                            //         status: 1,
-                                            //         message: "Account Created Successfully",
-                                            //         referral_code: userReferralCode,
-                                            //         referred_from: referredFrom
-                                            //     });
+                                        //     return res.json({
+                                        //         status: 1,
+                                        //         message: "Account Created Successfully",
+                                        //         referral_code: userReferralCode,
+                                        //         referred_from: referredFrom
+                                        //     });
 
-                                            // } 
-                                        } else if (insertData.affectedRows === 1) {
+                                        // } 
+                                    } else if (insertData.affectedRows === 1) {
 
-                                            const userId = insertData.insertId;
+                                        const userId = insertData.insertId;
 
-                                            let walletInsertQuery = "INSERT INTO mo_user_wallet SET ?";
+                                        let walletInsertQuery = "INSERT INTO mo_user_wallet SET ?";
 
-                                            let walletObj = {
-                                                user_id: userId,
-                                                main_wallet: 0.00,
-                                                wallet: 0.00,
-                                                last_updated_by: userId,
-                                                updated_at: new Date()
-                                            };
+                                        let walletObj = {
+                                            user_id: userId,
+                                            main_wallet: 0.00,
+                                            wallet: 0.00,
+                                            last_updated_by: userId,
+                                            updated_at: new Date()
+                                        };
 
-                                            await db.mainDb(walletInsertQuery, walletObj, async (walletErr, walletData) => {
+                                        await db.mainDb(walletInsertQuery, walletObj, async (walletErr, walletData) => {
 
-                                                if (walletErr || !walletData) {
-                                                    return res.json({
-                                                        status: 0,
-                                                        message: "User created but wallet creation failed"
-                                                    });
-                                                }
-
+                                            if (walletErr || !walletData) {
                                                 return res.json({
-                                                    status: 1,
-                                                    message: "Account Created Successfully",
-                                                    referral_code: userReferralCode,
-                                                    referred_from: referredFrom
+                                                    status: 0,
+                                                    message: "User created but wallet creation failed"
                                                 });
+                                            }
 
+                                            return res.json({
+                                                status: 1,
+                                                message: "Account Created Successfully",
+                                                referral_code: userReferralCode,
+                                                referred_from: referredFrom
                                             });
-                                        }
-                                        else {
 
-                                            return res.json({ status: 0, message: "Account details can't insert" });
+                                        });
+                                    }
+                                    else {
 
-                                        }
+                                        return res.json({ status: 0, message: "Account details can't insert" });
 
-                                    });
-                                } else {
+                                    }
 
-                                    return res.json({ status: 0, message: "Update Error.. Try after sometime" });
+                                });
+                            } else {
 
-                                }
+                                return res.json({ status: 0, message: "Update Error.. Try after sometime" });
+
+                            }
 
 
                             // } else {
@@ -279,19 +279,19 @@ exports.login = async (req, res) => {
             // let mailStatus = await mailhelper.sendMailWithTemplate(email, "login_otp", replaceble)
             // if (mailStatus.status == 1) {
 
-                const updateQuery = ` UPDATE mo_user_info SET otp=?, token=?, otp_expiry=?  WHERE id=?`;
+            const updateQuery = ` UPDATE mo_user_info SET otp=?, token=?, otp_expiry=?  WHERE id=?`;
 
-                db.mainDb(updateQuery, [otp, token, expiry, data[0].id], () => {
+            db.mainDb(updateQuery, [otp, token, expiry, data[0].id], () => {
 
-                    // TODO: send OTP via email/SMS
-                    console.log("OTP:", otp);
+                // TODO: send OTP via email/SMS
+                console.log("OTP:", otp);
 
-                    return res.json({
-                        status: 1,
-                        message: "OTP sent successfully",
-                        token: token
-                    });
+                return res.json({
+                    status: 1,
+                    message: "OTP sent successfully",
+                    token: token
                 });
+            });
             // } else {
             //     return res.json({
             //         status: 0,
@@ -1176,14 +1176,283 @@ exports.userWithdrawList = async (req, res) => {
 
 
 
+exports.changePassword = async (req, res) => {
+    try {
+
+        let reqData = req.body;
+        const userId = req.user.userId;
+
+
+        const validate = new Validator(reqData, {
+            old_password: 'required',
+            new_password: 'required',
+            confirm_password: 'required|same:new_password'
+        });
+
+        const matched = await validate.check();
+
+        if (!matched) {
+            let error_message = '';
+            Object.keys(validate.errors).forEach(function (key) {
+                if (validate.errors[key].message) {
+                    error_message += (error_message ? ', ' : '') + validate.errors[key].message;
+                }
+            });
+
+            return res.json({
+                status: 0,
+                responseCode: 'fail',
+                message: error_message
+            });
+        } else {
+
+            let selectQuery = "SELECT password FROM mo_user_info WHERE id = ?";
+
+            await db.mainDb(selectQuery, [userId], async (err, data) => {
+
+                if (err) {
+                    return res.json({
+                        status: 0,
+                        message: "DB error"
+                    });
+                } else if (data.length === 0) {
+                    return res.json({
+                        status: 0,
+                        message: "User not found"
+                    });
+                } else if (data[0].password !== reqData.old_password) {
+                    return res.json({
+                        status: 0,
+                        message: "Old password incorrect"
+                    });
+                } else if (reqData.old_password === reqData.new_password) {
+                    return res.json({
+                        status: 0,
+                        message: "New password must be different from old password"
+                    });
+                } else {
+
+                    let updateQuery = "UPDATE mo_user_info SET password=? WHERE id=?";
+
+                    await db.mainDb(updateQuery, [reqData.new_password, userId], (updateErr, updateData) => {
+
+                        if (updateErr) {
+                            return res.json({
+                                status: 0,
+                                message: "Password update failed"
+                            });
+                        }
+
+                        return res.json({
+                            status: 1,
+                            message: "Password updated successfully"
+                        });
+
+                    });
+                }
+
+
+            });
+        }
+
+    } catch (err) {
+        console.log("Error:", err);
+        return res.json({
+            status: 0,
+            message: "Something went wrong"
+        });
+    }
+};
 
 
 
 
 
 
+exports.forgotPassword = async (req, res) => {
+    try {
 
+        let reqData = req.body;
 
+        const validate = new Validator(reqData, {
+            email: 'required|email',
+            type: 'required|integer'
+        });
+
+        const matched = await validate.check();
+
+        if (!matched) {
+
+            let error_message = '';
+            Object.keys(validate.errors).forEach(function (key) {
+                if (validate.errors[key].message) {
+                    error_message += (error_message ? ', ' : '') + validate.errors[key].message;
+                }
+            });
+
+            return res.json({
+                status: 0,
+                message: error_message
+            });
+        }
+
+        // TYPE 1 → SEND MAIL OTP
+        if (reqData.type == 1) {
+
+            let checkQuery = "SELECT id FROM mo_user_info WHERE email=?";
+
+            db.mainDb(checkQuery, [reqData.email], async (err, data) => {
+
+                if (err) {
+                    return res.json({ status: 0, message: "DB error" });
+                }
+
+                if (data.length == 0) {
+                    return res.json({
+                        status: 0,
+                        message: "Email not registered"
+                    });
+                }
+
+                let otp = 1111
+                // let otp = Math.floor(1000 + Math.random() * 9000);
+
+                let expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
+
+                let updateQuery = "UPDATE mo_user_info SET mail_otp=?, otp_expiry=? WHERE email=?";
+
+                db.mainDb(updateQuery, [otp, expiry, reqData.email], async (uErr,uData) => {
+                    console.log("uData: ", uData);
+                    console.log("uErr: ", uErr);
+
+                    if (uErr) {
+                        return res.json({
+                            status: 0,
+                            message: "OTP update failed"
+                        });
+                    }
+
+                    // let replaceble = {
+                    //     OTP: otp
+                    // }
+
+                    // let mailStatus = await mailhelper.sendMailWithTemplate(reqData.email, "forgot_pass", replaceble)
+                    // console.log("mailStatus: ", mailStatus);
+
+                    // if (mailStatus.status == 1) {
+
+                        return res.json({
+                            status: 1,
+                            message: "OTP sent to email"
+                        });
+
+                    // } else {
+
+                    //     return res.json({
+                    //         status: 0,
+                    //         message: "Error while send mail for sign up..."
+                    //     });
+
+                    // }
+                });
+            });
+
+        }
+
+        // TYPE 2 → VERIFY OTP + UPDATE PASSWORD
+        else if (reqData.type == 2) {
+
+            const validateOtp = new Validator(reqData, {
+                email: 'required|email',
+                otp: 'required|integer|minLength:4|maxLength:4',
+                new_password: 'required',
+                confirm_password: 'required|same:new_password'
+            });
+
+            const matchedOtp = await validateOtp.check();
+
+            if (!matchedOtp) {
+
+                let error_message = '';
+                Object.keys(validateOtp.errors).forEach(function (key) {
+                    if (validateOtp.errors[key].message) {
+                        error_message += (error_message ? ', ' : '') + validateOtp.errors[key].message;
+                    }
+                });
+
+                return res.json({
+                    status: 0,
+                    message: error_message
+                });
+            }
+
+            let query = "SELECT mail_otp, otp_expiry FROM mo_user_info WHERE email=?";
+
+            db.mainDb(query, [reqData.email], async (err, data) => {
+
+                if (data.length == 0) {
+                    return res.json({
+                        status: 0,
+                        message: "User not found"
+                    });
+                }
+
+                if (data[0].mail_otp != reqData.otp) {
+                    return res.json({
+                        status: 0,
+                        message: "Invalid OTP"
+                    });
+                }
+
+                if (new Date(data[0].otp_expiry) < new Date()) {
+                    return res.json({
+                        status: 0,
+                        message: "OTP expired"
+                    });
+                }
+
+                let updateQuery = "UPDATE mo_user_info SET password=?, mail_otp=NULL WHERE email=?";
+
+                db.mainDb(updateQuery, [reqData.new_password, reqData.email], (uErr) => {
+
+                    if (uErr) {
+                        return res.json({
+                            status: 0,
+                            message: "Password update failed"
+                        });
+                    }
+
+                    return res.json({
+                        status: 1,
+                        message: "Password updated successfully"
+                    });
+
+                });
+
+            });
+
+        }
+
+        else {
+
+            return res.json({
+                status: 0,
+                message: "Invalid type"
+            });
+
+        }
+
+    } catch (err) {
+
+        console.log(err);
+
+        return res.json({
+            status: 0,
+            message: "Something went wrong"
+        });
+
+    }
+};
 
 
 
@@ -1198,7 +1467,7 @@ exports.userWithdrawList = async (req, res) => {
 exports.createTicket = async (req, res) => {
     try {
         const reqData = req.body;
-        const userId = req.user.id;
+        const userId = req.user.userId;
 
         const validate = new Validator(reqData, {
             subject: 'required|string',
@@ -1220,6 +1489,7 @@ exports.createTicket = async (req, res) => {
         `;
 
         db.mainDb(insertTicket, [userId, reqData.subject], (err, result) => {
+            console.log("err: ", err);
             if (err) return res.json({ status: 0, message: "Ticket creation failed" });
 
             const ticketId = result.insertId;
@@ -1254,7 +1524,7 @@ exports.createTicket = async (req, res) => {
 exports.replyTicket = async (req, res) => {
     try {
         const { ticket_id, message } = req.body;
-        const userId = req.user.id;
+        const userId = req.user.userId;
 
         const checkQuery = `
             SELECT * FROM mo_user_tickets
@@ -1292,7 +1562,7 @@ exports.replyTicket = async (req, res) => {
 exports.userTicketList = async (req, res) => {
     try {
         const reqData = req.body;
-        const userId = req.user.id;
+        const userId = req.user.userId;
 
         const page = parseInt(reqData.pageNo);
         const limit = parseInt(reqData.pageSize);
@@ -1339,7 +1609,7 @@ exports.userTicketList = async (req, res) => {
 */
 exports.ticketDetails = (req, res) => {
     const { ticket_id } = req.body;
-    const userId = req.user.id;
+    const userId = req.user.userId;
 
     const ticketQuery = `
         SELECT * FROM mo_user_tickets
@@ -1372,7 +1642,7 @@ exports.ticketDetails = (req, res) => {
 /* 5️⃣ Optional: Search Ticket By ID 
 exports.searchTicket = (req, res) => {
     const { ticket_id } = req.body;
-    const userId = req.user.id;
+    const userId = req.user.userId;
 
     const query = `SELECT * FROM mo_user_tickets WHERE id=? AND user_id=?`;
 
