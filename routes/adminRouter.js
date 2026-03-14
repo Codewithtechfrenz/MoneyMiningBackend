@@ -1,7 +1,7 @@
 let express = require('express');
 let router = express.Router();
 let adminController = require('../controllers/adminController.js')
-let adminhelper = require("../helper/adminhelper.js")
+let adminhelper = require("../helper/adminHelper.js")
 /* GET users listing. */
 router.get('/', function (req, res) {
     res.json({ status: 1 })
