@@ -13,15 +13,15 @@ router.get('/adminOtp', adminController.adminOtp);
 
 
 
-router.post('/info', adminhelper.auth, adminController.info);
+router.post('/adminInfo', adminhelper.auth, adminController.adminInfo);
 
 router.post('/getUserDetails', adminhelper.auth, adminController.getUserDetails);
 
 // router.post('/getKycList', adminhelper.auth, adminController.getKycList);
 
-router.post('/userKycListAdmin',  adminController.userKycListAdmin);
+router.post('/userKycListAdmin', adminController.userKycListAdmin);
 
-router.post('/userBankVerificationListAdmin',  adminController.userBankVerificationListAdmin);
+router.post('/userBankVerificationListAdmin', adminController.userBankVerificationListAdmin);
 
 router.post('/getSingleKycDetail', adminhelper.auth, adminController.getSingleKycDetail);
 
@@ -85,8 +85,8 @@ router.post('/closeTicketAdmin',
 );
 
 //router.post('/searchTicketAdmin',
-    // adminhelper.auth,
-    //adminController.searchTicket
+// adminhelper.auth,
+//adminController.searchTicket
 //);
 
 

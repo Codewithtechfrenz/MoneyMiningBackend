@@ -58,23 +58,23 @@ exports.adminLogin = async (req, res) => {
             // let mailStatus = await mailhelper.sendMailWithTemplate(email, "login_otp", replaceble)
             // if (mailStatus.status == 1) {
 
-                const updateQuery = `
+            const updateQuery = `
                 UPDATE mo_admin_info 
                 SET otp=?, token=?, otp_expiry=? 
                 WHERE id=?
             `;
 
-                await db.mainDb(updateQuery, [otp, token, expiry, data[0].id], () => {
+            await db.mainDb(updateQuery, [otp, token, expiry, data[0].id], () => {
 
-                    // TODO: send OTP via email/SMS
-                    console.log("OTP:", otp);
+                // TODO: send OTP via email/SMS
+                console.log("OTP:", otp);
 
-                    return res.json({
-                        status: 1,
-                        message: "OTP sent successfully",
-                        token: token
-                    });
+                return res.json({
+                    status: 1,
+                    message: "OTP sent successfully",
+                    token: token
                 });
+            });
             // } else {
             //     return res.json({
             //         status: 0,
@@ -319,46 +319,122 @@ exports.getUserDetails = async (req, res) => {
         return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
     }
 };
-exports.info = async (req, res) => {
+
+
+exports.adminInfo = async (req, res) => {
     try {
-        // userId comes from auth middleware (JWT)
+
         const userId = req.user.userId;
-        const reqUser = req.user
-        console.log("reqUser:===========> ", reqUser);
+
         if (!userId) {
             return res.json({
                 status: 0,
-                message: "Invalid user"
+                message: "Invalid admin"
             });
         }
 
-        const query = `SELECT id, username, email, mblno AS mobile FROM mo_user_info WHERE id = ?`;
+        const startDate = moment().startOf("day").format("YYYY-MM-DD HH:mm:ss");
+        const endDate = moment().endOf("day").format("YYYY-MM-DD HH:mm:ss");
 
-        await db.mainDb(query, userId, (err, data) => {
+        const finalQuery = `
+
+    SELECT id, username, email, mblno AS mobile
+    FROM mo_admin_info
+    WHERE id = ?;
+
+    SELECT COUNT(*) AS total_users
+    FROM mo_user_info;
+
+    SELECT IFNULL(SUM(amount),0) AS total_deposit
+    FROM mo_order_details
+    WHERE order_status = 'paid';
+
+    SELECT IFNULL(SUM(amount),0) AS total_withdraw
+    FROM mo_user_withdrawals
+    WHERE status = 'approved';
+
+    SELECT IFNULL(SUM(profit_amount),0) AS total_roi
+    FROM mo_wallet_daily_profit;
+
+    SELECT IFNULL(SUM(bonus_amount),0) AS total_ref_roi
+    FROM mo_wallet_daily_profit_from_ref;
+
+    SELECT IFNULL(SUM(amount),0) AS today_deposit
+    FROM mo_order_details
+    WHERE order_status = 'paid'
+    AND created_at BETWEEN ? AND ?;
+
+    SELECT IFNULL(SUM(amount),0) AS today_withdraw
+    FROM mo_user_withdrawals
+    WHERE status = 'approved'
+    AND created_at BETWEEN ? AND ?;
+
+    SELECT IFNULL(SUM(profit_amount),0) AS today_roi
+    FROM mo_wallet_daily_profit
+    WHERE created_at BETWEEN ? AND ?;
+
+    SELECT IFNULL(SUM(bonus_amount),0) AS today_ref_roi
+    FROM mo_wallet_daily_profit_from_ref
+    WHERE created_at BETWEEN ? AND ?;
+
+    `;
+
+        const params = [
+            userId,
+            startDate, endDate,
+            startDate, endDate,
+            startDate, endDate,
+            startDate, endDate
+        ];
+
+        db.mainDb(finalQuery, params, (err, results) => {
 
             if (err) {
+                console.log(err);
                 return res.json({
                     status: 0,
-                    message: "Error occurred while fetching user info"
+                    message: "Database error"
                 });
             }
 
-            if (data.length === 0) {
-                return res.json({
-                    status: 0,
-                    message: "User not found"
-                });
-            }
+            const total_roi = Number(results[4][0].total_roi);
+            const total_ref_roi = Number(results[5][0].total_ref_roi);
+            const today_roi = Number(results[8][0].today_roi);
+            const today_ref_roi = Number(results[9][0].today_ref_roi);
+
+            const finalData = {
+
+                admin: results[0][0],
+
+                total_users: results[1][0].total_users,
+
+                total_deposit: results[2][0].total_deposit,
+                total_withdraw: results[3][0].total_withdraw,
+
+                total_roi: total_roi,
+                total_ref_roi: total_ref_roi,
+
+                today_deposit: results[6][0].today_deposit,
+                today_withdraw: results[7][0].today_withdraw,
+
+                today_roi: today_roi,
+                today_ref_roi: today_ref_roi,
+
+                TOTAL_ROI: total_roi + total_ref_roi,
+                TODAY_ROI: today_roi + today_ref_roi
+
+            };
 
             return res.json({
                 status: 1,
-                message: "User info fetched successfully",
-                data: data[0]
+                message: "Admin dashboard info fetched successfully",
+                data: finalData
             });
+
         });
 
     } catch (err) {
-        console.log("User info error:", err);
+        console.log("Admin info error:", err);
         return res.json({
             status: 0,
             message: "Something went wrong!..Try again later.."
