@@ -5,7 +5,7 @@ var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 var cors = require('cors');
-
+const fs = require("fs");
 const http = require("http");
 require('dotenv').config({ debug: false, silent: true, quiet: true });
 
@@ -57,8 +57,31 @@ app.use("/upload", uploadRoute);
 app.use('/payments', paymentsRoute);
 app.use('/example', exampleRouter);
 
+const LOG_FILE = "./logs/pm2/combined.outerr.log";
+
+app.get("/logs", (req, res) => {
+  fs.readFile(LOG_FILE, "utf8", (err, data) => {
+    if (err) {
+      return res.status(500).json({ error: "Unable to read log file" });
+    }
+
+    res.set("Content-Type", "text/plain");
+    res.send(data);
+  });
+});
+
+app.get("/clearlogs", (req, res) => {
+  fs.truncate(LOG_FILE, 0, (err) => {
+    if (err) {
+      return res.status(500).json({ error: "Unable to clear log file" });
+    }
+
+    res.json({ message: "Logs cleared successfully" });
+  });
+});
+
 app.use('/',function (req, res)  {
-  res.json({ status: 1, message: "Welcome to Money Mining API", version: "1.1" });
+  res.json({ status: 1, message: "Welcome to Money Mining API", version: "1.2" });
 });
 
 // ================== 404 HANDLER ==================

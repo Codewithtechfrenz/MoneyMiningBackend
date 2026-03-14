@@ -116,14 +116,14 @@ exports.createAccount = async (req, res) => {
 
                             let updateUsedMobStatus = await common.updateData("mo_mobile_otp_logs", "is_verify = 1", `WHERE id = ${data[0][0].id}`)
 
-                            // let replaceble = {
-                            //     USERNAME: reqData.username,
-                            // }
+                            let replaceble = {
+                                USERNAME: reqData.username,
+                            }
 
-                            // let mailStatus = await mailhelper.sendMailWithTemplate(reqData.email, "create_acc", replaceble)
+                            let mailStatus = await mailhelper.sendMailWithTemplate(reqData.email, "create_acc", replaceble)
 
 
-                            // if (mailStatus.status == 1) {
+                            if (mailStatus.status == 1) {
 
                             if (updateUsedMailStatus.status == 1 && updateUsedMobStatus.status == 1) {
 
@@ -145,16 +145,7 @@ exports.createAccount = async (req, res) => {
 
                                         return res.json({ status: 0, message: "Error occurred when inserting user data" });
 
-                                        // } else if (insertData.affectedRows === 1) {
-
-                                        //     return res.json({
-                                        //         status: 1,
-                                        //         message: "Account Created Successfully",
-                                        //         referral_code: userReferralCode,
-                                        //         referred_from: referredFrom
-                                        //     });
-
-                                        // } 
+                             
                                     } else if (insertData.affectedRows === 1) {
 
                                         const userId = insertData.insertId;
@@ -201,12 +192,12 @@ exports.createAccount = async (req, res) => {
                             }
 
 
-                            // } else {
-                            //     return res.json({
-                            //         status: 0,
-                            //         message: "Error while send mail for login..."
-                            //     });
-                            // }
+                            } else {
+                                return res.json({
+                                    status: 0,
+                                    message: "Error while send mail for login..."
+                                });
+                            }
 
 
 
@@ -266,18 +257,18 @@ exports.login = async (req, res) => {
             }
 
             // 🔐 Generate OTP & Token
-            const otp = 111111
-            //const otp = Math.floor(100000 + Math.random() * 900000); // 6 digit
+            // const otp = 111111
+            const otp = Math.floor(100000 + Math.random() * 900000); // 6 digit
             const token = crypto.randomBytes(32).toString("hex");
             const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
-            // let replaceble = {
-            //     USERNAME: data[0].username,
-            //     OTP: otp
-            // }
+            let replaceble = {
+                USERNAME: data[0].username,
+                OTP: otp
+            }
 
-            // let mailStatus = await mailhelper.sendMailWithTemplate(email, "login_otp", replaceble)
-            // if (mailStatus.status == 1) {
+            let mailStatus = await mailhelper.sendMailWithTemplate(email, "login_otp", replaceble)
+            if (mailStatus.status == 1) {
 
             const updateQuery = ` UPDATE mo_user_info SET otp=?, token=?, otp_expiry=?  WHERE id=?`;
 
@@ -292,12 +283,12 @@ exports.login = async (req, res) => {
                     token: token
                 });
             });
-            // } else {
-            //     return res.json({
-            //         status: 0,
-            //         message: "Error while send mail for login..."
-            //     });
-            // }
+            } else {
+                return res.json({
+                    status: 0,
+                    message: "Error while send mail for login..."
+                });
+            }
         });
 
     } catch (err) {
@@ -648,20 +639,20 @@ exports.send_mail_otp_register = async (req, res) => {
                     return res.json({ status: 0, message: "Mail id already exist" });
 
                 } else {
-                    const otp = 1111
+                    // const otp = 1111
 
-                    // const otp = Math.floor(1000 + Math.random() * 9000); // 4 digit
+                    const otp = Math.floor(1000 + Math.random() * 9000); // 4 digit
                     const token = crypto.randomBytes(32).toString("hex");
                     const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
-                    // let replaceble = {
-                    //     OTP: otp
-                    // }
+                    let replaceble = {
+                        OTP: otp
+                    }
 
-                    // let mailStatus = await mailhelper.sendMailWithTemplate(email, "signup_otp", replaceble)
-                    // console.log("mailStatus: ", mailStatus);
+                    let mailStatus = await mailhelper.sendMailWithTemplate(email, "signup_otp", replaceble)
+                    console.log("mailStatus: ", mailStatus);
 
-                    // if (mailStatus.status == 1) {
+                    if (mailStatus.status == 1) {
 
                     const insertQuery = `INSERT INTO mo_mail_otp_logs SET mail_id = ?, otp=?, otp_expiry=?`;
 
@@ -681,12 +672,12 @@ exports.send_mail_otp_register = async (req, res) => {
                             });
                         }
                     });
-                    // } else {
-                    //     return res.json({
-                    //         status: 0,
-                    //         message: "Error while send mail for sign up..."
-                    //     });
-                    // }
+                    } else {
+                        return res.json({
+                            status: 0,
+                            message: "Error while send mail for sign up..."
+                        });
+                    }
 
                 }
             });
@@ -729,7 +720,7 @@ exports.send_mob_otp_register = async (req, res) => {
 
                 } else {
                     const otp = 1111
-                    //const otp = Math.floor(1000 + Math.random() * 9000); // 6 digit
+                    // const otp = Math.floor(1000 + Math.random() * 9000); // 6 digit
                     const token = crypto.randomBytes(32).toString("hex");
                     const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
@@ -1432,8 +1423,8 @@ exports.forgotPassword = async (req, res) => {
                     });
                 }
 
-                let otp = 1111
-                // let otp = Math.floor(1000 + Math.random() * 9000);
+                // let otp = 1111
+                let otp = Math.floor(1000 + Math.random() * 9000);
 
                 let expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
 
@@ -1450,28 +1441,28 @@ exports.forgotPassword = async (req, res) => {
                         });
                     }
 
-                    // let replaceble = {
-                    //     OTP: otp
-                    // }
+                    let replaceble = {
+                        OTP: otp
+                    }
 
-                    // let mailStatus = await mailhelper.sendMailWithTemplate(reqData.email, "forgot_pass", replaceble)
-                    // console.log("mailStatus: ", mailStatus);
+                    let mailStatus = await mailhelper.sendMailWithTemplate(reqData.email, "forgot_pass", replaceble)
+                    console.log("mailStatus: ", mailStatus);
 
-                    // if (mailStatus.status == 1) {
+                    if (mailStatus.status == 1) {
 
                     return res.json({
                         status: 1,
                         message: "OTP sent to email"
                     });
 
-                    // } else {
+                    } else {
 
-                    //     return res.json({
-                    //         status: 0,
-                    //         message: "Error while send mail for sign up..."
-                    //     });
+                        return res.json({
+                            status: 0,
+                            message: "Error while send mail for sign up..."
+                        });
 
-                    // }
+                    }
                 });
             });
 
