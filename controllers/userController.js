@@ -257,18 +257,18 @@ exports.login = async (req, res) => {
             }
 
             // 🔐 Generate OTP & Token
-            // const otp = 111111
-            const otp = Math.floor(100000 + Math.random() * 900000); // 6 digit
+            const otp = 111111
+            // const otp = Math.floor(100000 + Math.random() * 900000); // 6 digit
             const token = crypto.randomBytes(32).toString("hex");
             const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
-            let replaceble = {
-                USERNAME: data[0].username,
-                OTP: otp
-            }
+            // let replaceble = {
+            //     USERNAME: data[0].username,
+            //     OTP: otp
+            // }
 
-            let mailStatus = await mailhelper.sendMailWithTemplate(email, "login_otp", replaceble)
-            if (mailStatus.status == 1) {
+            // let mailStatus = await mailhelper.sendMailWithTemplate(email, "login_otp", replaceble)
+            // if (mailStatus.status == 1) {
 
             const updateQuery = ` UPDATE mo_user_info SET otp=?, token=?, otp_expiry=?  WHERE id=?`;
 
@@ -283,12 +283,12 @@ exports.login = async (req, res) => {
                     token: token
                 });
             });
-            } else {
-                return res.json({
-                    status: 0,
-                    message: "Error while send mail for login..."
-                });
-            }
+            // } else {
+            //     return res.json({
+            //         status: 0,
+            //         message: "Error while send mail for login..."
+            //     });
+            // }
         });
 
     } catch (err) {
@@ -640,20 +640,20 @@ exports.send_mail_otp_register = async (req, res) => {
                     return res.json({ status: 0, message: "Mail id already exist" });
 
                 } else {
-                    // const otp = 1111
+                    const otp = 1111
 
-                    const otp = Math.floor(1000 + Math.random() * 9000); // 4 digit
+                    // const otp = Math.floor(1000 + Math.random() * 9000); // 4 digit
                     const token = crypto.randomBytes(32).toString("hex");
                     const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
-                    let replaceble = {
-                        OTP: otp
-                    }
+                    // let replaceble = {
+                    //     OTP: otp
+                    // }
 
-                    let mailStatus = await mailhelper.sendMailWithTemplate(email, "signup_otp", replaceble)
-                    console.log("mailStatus: ", mailStatus);
+                    // let mailStatus = await mailhelper.sendMailWithTemplate(email, "signup_otp", replaceble)
+                    // console.log("mailStatus: ", mailStatus);
 
-                    if (mailStatus.status == 1) {
+                    // if (mailStatus.status == 1) {
 
                     const insertQuery = `INSERT INTO mo_mail_otp_logs SET mail_id = ?, otp=?, otp_expiry=?`;
 
@@ -673,12 +673,12 @@ exports.send_mail_otp_register = async (req, res) => {
                             });
                         }
                     });
-                    } else {
-                        return res.json({
-                            status: 0,
-                            message: "Error while send mail for sign up..."
-                        });
-                    }
+                    // } else {
+                    //     return res.json({
+                    //         status: 0,
+                    //         message: "Error while send mail for sign up..."
+                    //     });
+                    // }
 
                 }
             });
