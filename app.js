@@ -81,7 +81,7 @@ app.get("/clearlogs", (req, res) => {
 });
 
 app.use('/',function (req, res)  {
-  res.json({ status: 1, message: "Welcome to Money Mining API", version: "1.4" });
+  res.json({ status: 1, message: "Welcome to Money Mining API", version: "1.6" });
 });
 
 // ================== 404 HANDLER ==================

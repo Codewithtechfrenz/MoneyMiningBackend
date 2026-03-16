@@ -508,6 +508,7 @@ exports.info = async (req, res) => {
             u.referral_code,
             u.login_pin_status,
             u.login_pin,
+            u.profile_img,
             uw.main_wallet,
             uw.wallet,
             uw.hold
