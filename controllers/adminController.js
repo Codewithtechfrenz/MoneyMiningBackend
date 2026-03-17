@@ -22,68 +22,42 @@ exports.adminLogin = async (req, res) => {
         });
 
         if (!(await validate.check())) {
-            let msg = Object.values(validate.errors)
-                .map(e => e.message)
-                .join(', ');
-
+            let msg = Object.values(validate.errors).map(e => e.message).join(', ');
             return res.json({ status: 0, message: msg });
         }
 
         const selectQuery = "SELECT * FROM mo_admin_info WHERE email = ?";
         await db.mainDb(selectQuery, email, async (err, data) => {
-            console.log("data: ", data);
-            if (err) {
-                return res.json({ status: 0, message: "DB error" });
-            }
-
-            if (data.length === 0) {
-                return res.json({ status: 0, message: "admin not found" });
-            }
-
-            if (data[0].password !== password) {
-                return res.json({ status: 0, message: "Invalid password" });
-            }
-
-            // 🔐 Generate OTP & Token
-            const otp = Math.floor(100000 + Math.random() * 900000); // 6 digit
+            if (err) return res.json({ status: 0, message: "DB error" });
+            if (data.length === 0) return res.json({ status: 0, message: "Admin not found" });
+            if (data[0].password !== password) return res.json({ status: 0, message: "Invalid password" });
+            const otp = Math.floor(100000 + Math.random() * 900000); 
             const token = crypto.randomBytes(32).toString("hex");
-            const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min
-            console.log("expiry: ", expiry);
+            const expiry = new Date(Date.now() + 5 * 60 * 1000); 
+            let replaceble = {
+                USERNAME: data[0].username,
+                OTP: otp
+            };
+            let mailStatus = await mailhelper.sendMailWithTemplate(email, "login_otp", replaceble);
 
-
-            // let replaceble = {
-            //     USERNAME: data[0].username,
-            //     OTP: otp
-            // }
-
-            // let mailStatus = await mailhelper.sendMailWithTemplate(email, "login_otp", replaceble)
-            // if (mailStatus.status == 1) {
-
-            const updateQuery = `
-                UPDATE mo_admin_info 
-                SET otp=?, token=?, otp_expiry=? 
-                WHERE id=?
-            `;
-
-            await db.mainDb(updateQuery, [otp, token, expiry, data[0].id], () => {
-
-                // TODO: send OTP via email/SMS
-                console.log("OTP:", otp);
-
-                return res.json({
-                    status: 1,
-                    message: "OTP sent successfully",
-                    token: token
+            if (mailStatus.status == 1) {
+                const updateQuery = `UPDATE mo_admin_info SET otp=?, token=?, otp_expiry=? WHERE id=?`;
+                await db.mainDb(updateQuery, [otp, token, expiry, data[0].id], (updateErr) => {
+                    if (updateErr) return res.json({ status: 0, message: "DB Error saving OTP" });
+                    return res.json({
+                        status: 1,
+                        message: "OTP sent successfully to your email",
+                        token: token
+                    });
                 });
-            });
-            // } else {
-            //     return res.json({
-            //         status: 0,
-            //         message: "Error while send mail for login..."
-            //     });
-            // }
+            } else {
+                console.error("Brevo Error:", mailStatus.error);
+                return res.json({
+                    status: 0,
+                    message: "Failed to send OTP email. Please try again later."
+                });
+            }
         });
-
     } catch (err) {
         console.log(err);
         return res.json({ status: 0, message: "Something went wrong" });
