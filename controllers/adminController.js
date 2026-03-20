@@ -31,9 +31,9 @@ exports.adminLogin = async (req, res) => {
             if (err) return res.json({ status: 0, message: "DB error" });
             if (data.length === 0) return res.json({ status: 0, message: "Admin not found" });
             if (data[0].password !== password) return res.json({ status: 0, message: "Invalid password" });
-            const otp = Math.floor(100000 + Math.random() * 900000); 
+            const otp = Math.floor(100000 + Math.random() * 900000);
             const token = crypto.randomBytes(32).toString("hex");
-            const expiry = new Date(Date.now() + 5 * 60 * 1000); 
+            const expiry = new Date(Date.now() + 5 * 60 * 1000);
             let replaceble = {
                 USERNAME: data[0].username,
                 OTP: otp
