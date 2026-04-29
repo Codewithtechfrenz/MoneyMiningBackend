@@ -257,8 +257,8 @@ exports.login = async (req, res) => {
             }
 
             // 🔐 Generate OTP & Token
-            // const otp = 111111
-            const otp = Math.floor(100000 + Math.random() * 900000); // 6 digit
+            const otp = 123456
+            // const otp = Math.floor(100000 + Math.random() * 900000); // 6 digit
             const token = crypto.randomBytes(32).toString("hex");
             const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
@@ -640,9 +640,9 @@ exports.send_mail_otp_register = async (req, res) => {
                     return res.json({ status: 0, message: "Mail id already exist" });
 
                 } else {
-                    // const otp = 1111
+                    const otp = 1234
 
-                    const otp = Math.floor(1000 + Math.random() * 9000); // 4 digit
+                    // const otp = Math.floor(1000 + Math.random() * 9000); // 4 digit
                     const token = crypto.randomBytes(32).toString("hex");
                     const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
@@ -720,7 +720,9 @@ exports.send_mob_otp_register = async (req, res) => {
                     return res.json({ status: 0, message: "Mobile number already exist" });
 
                 } else {
+
                     const otp = 1111
+
                     // const otp = Math.floor(1000 + Math.random() * 9000); // 6 digit
                     const token = crypto.randomBytes(32).toString("hex");
                     const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min

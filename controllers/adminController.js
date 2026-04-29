@@ -1767,6 +1767,124 @@ exports.userWithdrawListAdmin = async (req, res) => {
     }
 };
 
+// exports.verifyBankAdmin = async (req, res) => {
+//     try {
+//         const reqData = req.body;
+
+//         const validate = new Validator(reqData, {
+//             user_id: 'required|integer',
+//             bank_status: 'required|integer|in:0,1,2'
+//         });
+
+//         const matched = await validate.check();
+//         if (!matched) {
+//             let msg = '';
+//             Object.values(validate.errors).forEach(e => {
+//                 msg += (msg ? ', ' : '') + e.message;
+//             });
+//             return res.json({ status: 0, message: msg });
+//         }
+
+//         const { user_id, bank_status, reject_reason } = reqData;
+
+//         if (bank_status === 2 && (!reject_reason || reject_reason.trim() === "")) {
+//             return res.json({ status: 0, message: "reject_reason is required when bank_status is rejected" });
+//         }
+
+//         // 1️⃣ Update bank details
+//         const updateBankQuery = `
+//       UPDATE mo_bank_details 
+//       SET bank_status=?, reject_reason=?, updated_at=NOW() 
+//       WHERE user_id=?
+//     `;
+//         db.mainDb(updateBankQuery, [bank_status, reject_reason || null, user_id], (err) => {
+//             if (err) {
+//                 console.error("Bank update error:", err);
+//                 return res.json({ status: 0, message: "Error updating bank status" });
+//             }
+
+//             // 2️⃣ Update user info
+//             const updateUserQuery = `UPDATE mo_user_info SET is_bank_verified=? WHERE id=?`;
+//             db.mainDb(updateUserQuery, [bank_status, user_id], (err2) => {
+//                 if (err2) {
+//                     console.error("User update error:", err2);
+//                     return res.json({ status: 0, message: "Error updating user bank status" });
+//                 }
+
+//                 // 3️⃣ If verified, create Razorpay fund account
+//                 if (bank_status == 1) {
+//                     db.mainDb(
+//                         `SELECT acc_no, ifsc_code FROM mo_bank_details WHERE user_id=?`,
+//                         [user_id],
+//                         async (err3, rows) => {
+//                             if (err3) {
+//                                 console.error("Bank select error:", err3);
+//                                 return res.json({ status: 0, message: "Error fetching bank details" });
+//                             }
+//                             if (!rows.length) return res.json({ status: 0, message: "Bank not found" });
+
+//                             const bank = rows[0];
+//                             let fund_account_id = null;
+
+//                             try {
+//                                 const fundAccount = await razorpay.fundAccounts.create({
+//                                     account_type: "bank_account",
+//                                     bank_account: {
+//                                         name: "User " + user_id,
+//                                         ifsc: bank.ifsc_code,
+//                                         account_number: bank.acc_no
+//                                     },
+//                                     contact: { name: "User " + user_id }
+//                                 });
+
+//                                 fund_account_id = fundAccount.id;
+//                                 console.log("fundAccount:==============> ", fundAccount);
+
+//                                 // Save fund_account_id in DB
+//                                 db.mainDb(
+//                                     `UPDATE mo_bank_details SET fund_account_id=? WHERE user_id=?`,
+//                                     [fund_account_id, user_id],
+//                                     (err4) => {
+//                                         if (err4) console.error("Fund account save error:", err4);
+//                                         return res.json({
+//                                             status: 1,
+//                                             message: "Bank verified & fund account created",
+//                                             is_bank_verified: bank_status,
+//                                             fund_account_id
+//                                         });
+//                                     }
+//                                 );
+
+//                             } catch (rzpErr) {
+//                                 console.error("Razorpay fund account error:", rzpErr);
+//                                 return res.json({
+//                                     status: 1,
+//                                     message: "Bank verified but fund account creation failed",
+//                                     is_bank_verified: bank_status,
+//                                     fund_account_id: null
+//                                 });
+//                             }
+//                         }
+//                     );
+//                 } else {
+//                     return res.json({
+//                         status: 1,
+//                         message: bank_status === 2 ? "Bank rejected" : "Bank updated",
+//                         is_bank_verified: bank_status,
+//                         fund_account_id: null
+//                     });
+//                 }
+
+//             });
+//         });
+
+//     } catch (err) {
+//         console.error("verifyBankAdmin error:", err);
+//         return res.json({ status: 0, message: "Something went wrong" });
+//     }
+// };
+
+
 exports.verifyBankAdmin = async (req, res) => {
     try {
         const reqData = req.body;
@@ -1787,16 +1905,21 @@ exports.verifyBankAdmin = async (req, res) => {
 
         const { user_id, bank_status, reject_reason } = reqData;
 
+        // If rejected, require reason
         if (bank_status === 2 && (!reject_reason || reject_reason.trim() === "")) {
-            return res.json({ status: 0, message: "reject_reason is required when bank_status is rejected" });
+            return res.json({
+                status: 0,
+                message: "reject_reason is required when bank_status is rejected"
+            });
         }
 
         // 1️⃣ Update bank details
         const updateBankQuery = `
-      UPDATE mo_bank_details 
-      SET bank_status=?, reject_reason=?, updated_at=NOW() 
-      WHERE user_id=?
-    `;
+            UPDATE mo_bank_details 
+            SET bank_status=?, reject_reason=?, updated_at=NOW() 
+            WHERE user_id=?
+        `;
+
         db.mainDb(updateBankQuery, [bank_status, reject_reason || null, user_id], (err) => {
             if (err) {
                 console.error("Bank update error:", err);
@@ -1804,77 +1927,27 @@ exports.verifyBankAdmin = async (req, res) => {
             }
 
             // 2️⃣ Update user info
-            const updateUserQuery = `UPDATE mo_user_info SET is_bank_verified=? WHERE id=?`;
+            const updateUserQuery = `
+                UPDATE mo_user_info 
+                SET is_bank_verified=? 
+                WHERE id=?
+            `;
+
             db.mainDb(updateUserQuery, [bank_status, user_id], (err2) => {
                 if (err2) {
                     console.error("User update error:", err2);
                     return res.json({ status: 0, message: "Error updating user bank status" });
                 }
 
-                // 3️⃣ If verified, create Razorpay fund account
-                if (bank_status == 1) {
-                    db.mainDb(
-                        `SELECT acc_no, ifsc_code FROM mo_bank_details WHERE user_id=?`,
-                        [user_id],
-                        async (err3, rows) => {
-                            if (err3) {
-                                console.error("Bank select error:", err3);
-                                return res.json({ status: 0, message: "Error fetching bank details" });
-                            }
-                            if (!rows.length) return res.json({ status: 0, message: "Bank not found" });
-
-                            const bank = rows[0];
-                            let fund_account_id = null;
-
-                            try {
-                                const fundAccount = await razorpay.fundAccounts.create({
-                                    account_type: "bank_account",
-                                    bank_account: {
-                                        name: "User " + user_id,
-                                        ifsc: bank.ifsc_code,
-                                        account_number: bank.acc_no
-                                    },
-                                    contact: { name: "User " + user_id }
-                                });
-
-                                fund_account_id = fundAccount.id;
-                                console.log("fundAccount:==============> ", fundAccount);
-
-                                // Save fund_account_id in DB
-                                db.mainDb(
-                                    `UPDATE mo_bank_details SET fund_account_id=? WHERE user_id=?`,
-                                    [fund_account_id, user_id],
-                                    (err4) => {
-                                        if (err4) console.error("Fund account save error:", err4);
-                                        return res.json({
-                                            status: 1,
-                                            message: "Bank verified & fund account created",
-                                            is_bank_verified: bank_status,
-                                            fund_account_id
-                                        });
-                                    }
-                                );
-
-                            } catch (rzpErr) {
-                                console.error("Razorpay fund account error:", rzpErr);
-                                return res.json({
-                                    status: 1,
-                                    message: "Bank verified but fund account creation failed",
-                                    is_bank_verified: bank_status,
-                                    fund_account_id: null
-                                });
-                            }
-                        }
-                    );
-                } else {
-                    return res.json({
-                        status: 1,
-                        message: bank_status === 2 ? "Bank rejected" : "Bank updated",
-                        is_bank_verified: bank_status,
-                        fund_account_id: null
-                    });
-                }
-
+                return res.json({
+                    status: 1,
+                    message: bank_status === 2 
+                        ? "Bank rejected" 
+                        : bank_status === 1 
+                            ? "Bank verified" 
+                            : "Bank status updated",
+                    is_bank_verified: bank_status
+                });
             });
         });
 
@@ -1883,9 +1956,6 @@ exports.verifyBankAdmin = async (req, res) => {
         return res.json({ status: 0, message: "Something went wrong" });
     }
 };
-
-
-
 
 
 exports.approveWithdraw = (req, res) => {
