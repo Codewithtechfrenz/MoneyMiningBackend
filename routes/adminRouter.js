@@ -31,6 +31,7 @@ router.post('/verifyBankAdmin', adminController.verifyBankAdmin);
 
 
 router.post('/depositList', adminController.depositList);
+
 router.post('/moveWalletAmount', adminController.moveWalletAmount);
 
 router.post('/userWalletRequestListAdmin', adminController.userWalletRequestListAdmin);
@@ -38,6 +39,8 @@ router.post('/userWalletRequestListAdmin', adminController.userWalletRequestList
 router.post('/userWithdrawListAdmin', adminController.userWithdrawListAdmin);
 
 router.post('/approveWithdraw', adminController.approveWithdraw);
+
+router.post('/rejectWithdraw', adminController.rejectWithdraw);
 
 router.post('/userDailyWalletProfitAdmin', adminController.userDailyWalletProfitAdmin);
 

@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const common = require("../helper/common")
 const moment = require("moment");
 const mailhelper = require("../helper/mailHelper")
-
+const axios = require("axios");
 
 
 
@@ -80,7 +80,7 @@ exports.createAccount = async (req, res) => {
 
                     await db.mainDb(selectQuery, [reqData.mobile, reqData.email], async (err, data) => {
                         console.log("err: ", err);
-                        // console.log("data:=============> ", data[1][0].otp);
+                        console.log("data:=============> ", data);
 
                         if (err) {
 
@@ -122,8 +122,9 @@ exports.createAccount = async (req, res) => {
 
                             let mailStatus = await mailhelper.sendMailWithTemplate(reqData.email, "create_acc", replaceble)
 
+                            let smsStatus = await mailhelper.sendSMSWithTemplate(reqData.mobile, "create_acc");
 
-                            if (mailStatus.status == 1) {
+                            if (mailStatus.status == 1 && smsStatus.status == 1) {
 
                                 if (updateUsedMailStatus.status == 1 && updateUsedMobStatus.status == 1) {
 
@@ -691,66 +692,179 @@ exports.send_mail_otp_register = async (req, res) => {
 
 
 
+// exports.send_mob_otp_register = async (req, res) => {
+//     try {
+//         const { mob_no } = req.body;
+
+//         const validate = new Validator(req.body, {
+//             mob_no: 'required|minLength:10|maxLength:10'
+//         });
+
+//         if (!(await validate.check())) {
+//             let msg = Object.values(validate.errors)
+//                 .map(e => e.message)
+//                 .join(', ');
+
+//             return res.json({ status: 0, message: msg });
+//         } else {
+
+//             const selectQuery = "SELECT * FROM mo_user_info WHERE mblno = ?";
+
+//             await db.mainDb(selectQuery, mob_no, async (err, data) => {
+
+//                 if (err) {
+
+//                     return res.json({ status: 0, message: "DB error" });
+
+//                 } else if (data.length > 0) {
+
+//                     return res.json({ status: 0, message: "Mobile number already exist" });
+
+//                 } else {
+
+//                     const otp = 1111
+
+//                     // const otp = Math.floor(1000 + Math.random() * 9000); // 6 digit
+//                     const token = crypto.randomBytes(32).toString("hex");
+//                     const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min
+
+//                     const insertQuery = `INSERT INTO mo_mobile_otp_logs SET mob_no = ?, otp=?, otp_expiry=?`;
+
+//                     await db.mainDb(insertQuery, [mob_no, otp, expiry], (insertErr, insertData) => {
+//                         console.log("insertErr: ", insertErr);
+//                         console.log("insertData: ", insertData);
+
+//                         if (insertErr) {
+
+//                             return res.json({ status: 0, message: "DB error" });
+
+//                         } else {
+
+//                             return res.json({
+//                                 status: 1,
+//                                 message: "OTP sent successfully"
+//                             });
+//                         }
+//                     });
+//                 }
+//             });
+//         }
+//     } catch (err) {
+//         console.log(err);
+//         return res.json({ status: 0, message: "Something went wrong" });
+//     }
+// };
+
+
+
+
+
+
 exports.send_mob_otp_register = async (req, res) => {
     try {
         const { mob_no } = req.body;
 
+        // ✅ Validation
         const validate = new Validator(req.body, {
-            mob_no: 'required|minLength:10|maxLength:10'
+            mob_no: "required|digits:10"
         });
 
-        if (!(await validate.check())) {
+        const matched = await validate.check();
+
+        if (!matched) {
             let msg = Object.values(validate.errors)
                 .map(e => e.message)
-                .join(', ');
-
+                .join(", ");
             return res.json({ status: 0, message: msg });
-        } else {
+        }
 
-            const selectQuery = "SELECT * FROM mo_user_info WHERE mblno = ?";
+        // ✅ Check if mobile exists
+        const selectQuery = "SELECT * FROM mo_user_info WHERE mblno = ?";
 
-            await db.mainDb(selectQuery, mob_no, async (err, data) => {
+        db.mainDb(selectQuery, [mob_no], async (err, data) => {
 
-                if (err) {
+            if (err) {
+                console.log("DB Error:", err);
+                return res.json({ status: 0, message: "DB error" });
+            }
 
+            if (data.length > 0) {
+                return res.json({
+                    status: 0,
+                    message: "Mobile number already exists"
+                });
+            }
+
+            // ✅ Generate OTP
+            const otp = Math.floor(1000 + Math.random() * 9000);
+
+            const expiry = new Date(Date.now() + 5 * 60 * 1000);
+
+            // ✅ Save OTP
+            const insertQuery = `
+                INSERT INTO mo_mobile_otp_logs 
+                (mob_no, otp, otp_expiry) 
+                VALUES (?, ?, ?)
+            `;
+
+            db.mainDb(insertQuery, [mob_no, otp, expiry], async (insertErr) => {
+
+                if (insertErr) {
+                    console.log("Insert Error:", insertErr);
                     return res.json({ status: 0, message: "DB error" });
+                }
 
-                } else if (data.length > 0) {
+                // ✅ Replace {#numeric#} with OTP
+                const message = `Hello from MoneyMining!.Use "${otp}" to verify your investment account. Secure your future with us. Do not disclose this code.`;
 
-                    return res.json({ status: 0, message: "Mobile number already exist" });
+                try {
+                    // ✅ YOUR PROVIDED API
+                    const smsUrl = "https://instantalerts.in/api/smsapi";
 
-                } else {
-
-                    const otp = 1111
-
-                    // const otp = Math.floor(1000 + Math.random() * 9000); // 6 digit
-                    const token = crypto.randomBytes(32).toString("hex");
-                    const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 min
-
-                    const insertQuery = `INSERT INTO mo_mobile_otp_logs SET mob_no = ?, otp=?, otp_expiry=?`;
-
-                    await db.mainDb(insertQuery, [mob_no, otp, expiry], (insertErr, insertData) => {
-                        console.log("insertErr: ", insertErr);
-                        console.log("insertData: ", insertData);
-
-                        if (insertErr) {
-
-                            return res.json({ status: 0, message: "DB error" });
-
-                        } else {
-
-                            return res.json({
-                                status: 1,
-                                message: "OTP sent successfully"
-                            });
+                    const smsResponse = await axios.get(smsUrl, {
+                        params: {
+                            key: "8b6162f006d0f2745acf6c91cadcf8d9",
+                            route: "2",
+                            sender: "INSTNE",
+                            number: mob_no,
+                            templateid: "1407177605846318046",
+                            sms: message
                         }
+                    });
+
+                    console.log("SMS Response:", smsResponse.data);
+
+                    // ✅ Success check (basic)
+                    if (!smsResponse.data) {
+                        return res.json({
+                            status: 0,
+                            message: "Failed to send OTP"
+                        });
+                    }
+
+                    return res.json({
+                        status: 1,
+                        message: "OTP sent successfully"
+                    });
+
+                } catch (smsErr) {
+                    console.log("SMS Error:", smsErr.message);
+
+                    return res.json({
+                        status: 0,
+                        message: "SMS service failed"
                     });
                 }
             });
-        }
+        });
+
     } catch (err) {
-        console.log(err);
-        return res.json({ status: 0, message: "Something went wrong" });
+        console.log("Catch Error:", err);
+
+        return res.json({
+            status: 0,
+            message: "Something went wrong"
+        });
     }
 };
 
@@ -1001,11 +1115,99 @@ exports.requestMoveWalletAmount = async (req, res) => {
 
 
 
+// exports.userDepositList = async (req, res) => {
+//     try {
+//         // 1️⃣ Input validation
+//         const v = new Validator(req.body, {
+//             status: 'sometimes|integer|in:0,1,2',       // optional
+//             pageNo: 'required|integer|min:1',
+//             pageSize: 'required|integer|min:1|max:100',
+//             search: 'sometimes|string|maxLength:100'
+//         });
+
+//         const matched = await v.check();
+//         if (!matched) {
+//             let error_message = '';
+//             Object.values(v.errors).forEach(e => {
+//                 error_message += (error_message ? ', ' : '') + e.message;
+//             });
+//             return res.status(400).json({ success: false, message: error_message });
+//         }
+
+//         // 2️⃣ Extract request values
+//         const userId = req.body.userId // Replace with actual authenticated user ID
+//         const pageNo = parseInt(req.body.pageNo);
+//         const pageSize = parseInt(req.body.pageSize);
+//         const search = req.body.search;
+
+//         let whereClauses = ['user_id = ?'];
+//         let queryParams = [userId];
+
+//         // Optional status filter
+//         if (req.body.status !== undefined) {
+//             const statusMap = { 0: 'created', 1: 'paid', 2: 'failed' };
+//             const status = statusMap[req.body.status];
+//             whereClauses.push('order_status = ?');
+//             queryParams.push(status);
+//         }
+
+//         // Optional search filter
+//         if (search) {
+//             whereClauses.push('(order_id LIKE ? OR receipt LIKE ? OR payment_id LIKE ?)');
+//             const searchValue = `%${search}%`;
+//             queryParams.push(searchValue, searchValue, searchValue);
+//         }
+
+//         const whereSQL = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+//         const offset = (pageNo - 1) * pageSize;
+
+//         // 3️⃣ Fetch paginated results
+//         const dataQuery = `
+//             SELECT id, user_id, amount, currency, receipt, order_id, order_status, order_created_at, created_at, payment_id
+//             FROM mo_order_details
+//             ${whereSQL}
+//             ORDER BY created_at DESC
+//             LIMIT ? OFFSET ?
+//         `;
+//         const dataParams = [...queryParams, pageSize, offset];
+
+//         db.mainDb(dataQuery, dataParams, (err, results) => {
+//             if (err) {
+//                 console.error('DB fetch error:', err);
+//                 return res.status(500).json({ success: false, message: 'Database error' });
+//             }
+
+//             // 4️⃣ Get total count for pagination
+//             const countQuery = `SELECT COUNT(*) as total FROM mo_order_details ${whereSQL}`;
+//             db.mainDb(countQuery, queryParams, (err, countResult) => {
+//                 if (err) {
+//                     console.error('DB count error:', err);
+//                     return res.status(500).json({ success: false, message: 'Database error' });
+//                 }
+
+//                 const total = countResult[0].total;
+//                 return res.json({
+//                     success: true,
+//                     pageNo,
+//                     pageSize,
+//                     total,
+//                     totalPages: Math.ceil(total / pageSize),
+//                     data: results
+//                 });
+//             });
+//         });
+
+//     } catch (err) {
+//         console.error('userDepositList error:', err);
+//         return res.status(500).json({ success: false, message: 'Internal server error' });
+//     }
+// };
+
+
 exports.userDepositList = async (req, res) => {
     try {
-        // 1️⃣ Input validation
         const v = new Validator(req.body, {
-            status: 'sometimes|integer|in:0,1,2',       // optional
+            status: 'sometimes|integer|in:0,1,2',
             pageNo: 'required|integer|min:1',
             pageSize: 'required|integer|min:1|max:100',
             search: 'sometimes|string|maxLength:100'
@@ -1017,11 +1219,10 @@ exports.userDepositList = async (req, res) => {
             Object.values(v.errors).forEach(e => {
                 error_message += (error_message ? ', ' : '') + e.message;
             });
-            return res.status(400).json({ success: false, message: error_message });
+            return res.status(400).json({ status: 0, message: error_message });
         }
 
-        // 2️⃣ Extract request values
-        const userId = req.body.userId // Replace with actual authenticated user ID
+        const userId = req.body.userId;
         const pageNo = parseInt(req.body.pageNo);
         const pageSize = parseInt(req.body.pageSize);
         const search = req.body.search;
@@ -1029,51 +1230,61 @@ exports.userDepositList = async (req, res) => {
         let whereClauses = ['user_id = ?'];
         let queryParams = [userId];
 
-        // Optional status filter
+        // Status filter
         if (req.body.status !== undefined) {
-            const statusMap = { 0: 'created', 1: 'paid', 2: 'failed' };
-            const status = statusMap[req.body.status];
+            const statusMap = {
+                0: 'pending',
+                1: 'paid',
+                2: 'rejected'
+            };
+
             whereClauses.push('order_status = ?');
-            queryParams.push(status);
+            queryParams.push(statusMap[req.body.status]);
         }
 
-        // Optional search filter
+        // Search filter
         if (search) {
-            whereClauses.push('(order_id LIKE ? OR receipt LIKE ? OR payment_id LIKE ?)');
+            whereClauses.push(`
+                (order_id LIKE ? OR receipt LIKE ? OR payment_id LIKE ? OR utr_id LIKE ?)
+            `);
             const searchValue = `%${search}%`;
-            queryParams.push(searchValue, searchValue, searchValue);
+            queryParams.push(searchValue, searchValue, searchValue, searchValue);
         }
 
-        const whereSQL = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+        const whereSQL = 'WHERE ' + whereClauses.join(' AND ');
         const offset = (pageNo - 1) * pageSize;
 
-        // 3️⃣ Fetch paginated results
         const dataQuery = `
-            SELECT id, user_id, amount, currency, receipt, order_id, order_status, order_created_at, created_at, payment_id
+            SELECT 
+                id, user_id, amount, currency, receipt, order_id,
+                order_status, order_created_at, created_at, payment_id,
+                utr_id, proof_image
             FROM mo_order_details
             ${whereSQL}
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
         `;
+
         const dataParams = [...queryParams, pageSize, offset];
 
         db.mainDb(dataQuery, dataParams, (err, results) => {
             if (err) {
-                console.error('DB fetch error:', err);
-                return res.status(500).json({ success: false, message: 'Database error' });
+                console.error(err);
+                return res.status(500).json({ status: 0, message: 'Database error' });
             }
 
-            // 4️⃣ Get total count for pagination
             const countQuery = `SELECT COUNT(*) as total FROM mo_order_details ${whereSQL}`;
+
             db.mainDb(countQuery, queryParams, (err, countResult) => {
                 if (err) {
-                    console.error('DB count error:', err);
-                    return res.status(500).json({ success: false, message: 'Database error' });
+                    console.error(err);
+                    return res.status(500).json({ status: 0, message: 'Database error' });
                 }
 
                 const total = countResult[0].total;
+
                 return res.json({
-                    success: true,
+                    status: 1,
                     pageNo,
                     pageSize,
                     total,
@@ -1084,12 +1295,10 @@ exports.userDepositList = async (req, res) => {
         });
 
     } catch (err) {
-        console.error('userDepositList error:', err);
-        return res.status(500).json({ success: false, message: 'Internal server error' });
+        console.error(err);
+        return res.status(500).json({ status: 0, message: 'Internal server error' });
     }
 };
-
-
 
 exports.userWalletRequestList = async (req, res) => {
     try {
@@ -1233,60 +1442,141 @@ exports.userWithdrawRequest = async (req, res) => {
 };
 
 
+// exports.userWithdrawList = async (req, res) => {
+//     try {
+//         const reqData = req.body;
+//         const userId = req.user.userId;
+//         // ✅ Validation
+//         const validate = new Validator(reqData, {
+//             pageNo: 'integer|min:1',
+//             pageSize: 'integer|min:1'
+//         });
+
+//         const matched = await validate.check();
+//         if (!matched) {
+//             let error_message = '';
+//             Object.keys(validate.errors).forEach((key) => {
+//                 if (validate.errors[key].message) {
+//                     error_message += (error_message ? ', ' : '') + validate.errors[key].message;
+//                 }
+//             });
+//             return res.json({ status: 0, message: error_message });
+//         }
+
+//         const page = parseInt(reqData.pageNo) || 1;
+//         const limit = parseInt(reqData.pageSize) || 10;
+//         const offset = (page - 1) * limit;
+
+//         let queryParams = [];
+
+
+//         const query = `SELECT id, amount, status, reference_id, razorpay_payout_id, created_at razorpay_payout_id FROM mo_user_withdrawals WHERE user_id = ${userId} ORDER BY created_at DESC  LIMIT ? OFFSET ? `;
+
+//         queryParams.push(limit, offset);
+
+//         await db.mainDb(query, queryParams, (err, data) => {
+//             if (err) {
+//                 console.error("Get user list error:", err);
+//                 return res.json({ status: 0, message: "Error fetching user list" });
+//             }
+
+//             return res.json({
+//                 status: 1,
+//                 page,
+//                 pageSize: limit,
+//                 totalRecords: data.length,
+//                 data
+//             });
+//         });
+
+//     } catch (err) {
+//         console.error("getUserList error:", err);
+//         return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
+//     }
+// };
+
 exports.userWithdrawList = async (req, res) => {
     try {
         const reqData = req.body;
         const userId = req.user.userId;
+
         // ✅ Validation
         const validate = new Validator(reqData, {
             pageNo: 'integer|min:1',
-            pageSize: 'integer|min:1'
+            pageSize: 'integer|min:1|max:100'
         });
 
         const matched = await validate.check();
         if (!matched) {
             let error_message = '';
-            Object.keys(validate.errors).forEach((key) => {
-                if (validate.errors[key].message) {
-                    error_message += (error_message ? ', ' : '') + validate.errors[key].message;
-                }
+            Object.values(validate.errors).forEach(e => {
+                error_message += (error_message ? ', ' : '') + e.message;
             });
             return res.json({ status: 0, message: error_message });
         }
 
-        const page = parseInt(reqData.pageNo) || 1;
-        const limit = parseInt(reqData.pageSize) || 10;
-        const offset = (page - 1) * limit;
+        const pageNo = parseInt(reqData.pageNo) || 1;
+        const pageSize = parseInt(reqData.pageSize) || 10;
+        const offset = (pageNo - 1) * pageSize;
 
-        let queryParams = [];
+        // ✅ COUNT QUERY (for pagination)
+        const countQuery = `
+            SELECT COUNT(*) as total 
+            FROM mo_user_withdrawals 
+            WHERE user_id = ?
+        `;
 
-
-        const query = `SELECT id, amount, status, reference_id, razorpay_payout_id, created_at razorpay_payout_id FROM mo_user_withdrawals WHERE user_id = ${userId} ORDER BY created_at DESC  LIMIT ? OFFSET ? `;
-
-        queryParams.push(limit, offset);
-
-        await db.mainDb(query, queryParams, (err, data) => {
+        db.mainDb(countQuery, [userId], (err, countResult) => {
             if (err) {
-                console.error("Get user list error:", err);
-                return res.json({ status: 0, message: "Error fetching user list" });
+                console.error(err);
+                return res.json({ status: 0, message: "Error fetching count" });
             }
 
-            return res.json({
-                status: 1,
-                page,
-                pageSize: limit,
-                totalRecords: data.length,
-                data
-            });
+            const totalRecords = countResult?.[0]?.total || 0;
+
+            // ✅ DATA QUERY (RAZORPAY REMOVED)
+            const dataQuery = `
+                SELECT 
+                    id,
+                    amount,
+                    status,
+                    reference_id,
+                    transaction_id,
+                    proof_image,
+                    admin_remarks,
+                    created_at
+                FROM mo_user_withdrawals
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+            `;
+
+            db.mainDb(
+                dataQuery,
+                [userId, pageSize, offset],
+                (err, data) => {
+                    if (err) {
+                        console.error(err);
+                        return res.json({ status: 0, message: "Error fetching withdraw list" });
+                    }
+
+                    return res.json({
+                        status: 1,
+                        pageNo,
+                        pageSize,
+                        totalRecords,
+                        totalPages: Math.ceil(totalRecords / pageSize),
+                        data
+                    });
+                }
+            );
         });
 
     } catch (err) {
-        console.error("getUserList error:", err);
+        console.error(err);
         return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
     }
 };
-
-
 
 exports.changePassword = async (req, res) => {
     try {
@@ -1921,368 +2211,553 @@ exports.userDailyReferralProfit = async (req, res) => {
 
 
 
+// exports.transactionHistory = async (req, res) => {
+//     try {
+//         const reqData = req.body;
+//         const userId = req.user.userId;  // Get the user ID from authenticated user
+//         const type = reqData.type
+//         // ✅ Validation
+//         const validate = new Validator(reqData, {
+//             type: 'integer|min:1'
+//         });
+
+//         const matched = await validate.check();
+//         if (!matched) {
+//             let error_message = '';
+//             Object.keys(validate.errors).forEach((key) => {
+//                 if (validate.errors[key].message) {
+//                     error_message += (error_message ? ', ' : '') + validate.errors[key].message;
+//                 }
+//             });
+//             return res.json({ status: 0, message: error_message });
+//         } else {
+
+//             if (type == 1) { // deposit history
+
+//                 try {
+//                     // 1️⃣ Input validation
+//                     const v = new Validator(req.body, {
+//                         status: 'sometimes|integer|in:0,1,2',       // optional
+//                         pageNo: 'required|integer|min:1',
+//                         pageSize: 'required|integer|min:1|max:100',
+//                         search: 'sometimes|string|maxLength:100'
+//                     });
+
+//                     const matched = await v.check();
+//                     if (!matched) {
+//                         let error_message = '';
+//                         Object.values(v.errors).forEach(e => {
+//                             error_message += (error_message ? ', ' : '') + e.message;
+//                         });
+//                         return res.status(400).json({ success: false, message: error_message });
+//                     }
+
+//                     // 2️⃣ Extract request values
+//                     const userId = req.body.userId // Replace with actual authenticated user ID
+//                     const pageNo = parseInt(req.body.pageNo);
+//                     const pageSize = parseInt(req.body.pageSize);
+//                     const search = req.body.search;
+
+//                     let whereClauses = ['user_id = ?'];
+//                     let queryParams = [userId];
+
+//                     // Optional status filter
+//                     if (req.body.status !== undefined) {
+//                         const statusMap = { 0: 'created', 1: 'paid', 2: 'failed' };
+//                         const status = statusMap[req.body.status];
+//                         whereClauses.push('order_status = ?');
+//                         queryParams.push(status);
+//                     }
+
+//                     // Optional search filter
+//                     if (search) {
+//                         whereClauses.push('(order_id LIKE ? OR receipt LIKE ? OR payment_id LIKE ?)');
+//                         const searchValue = `%${search}%`;
+//                         queryParams.push(searchValue, searchValue, searchValue);
+//                     }
+
+//                     const whereSQL = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+//                     const offset = (pageNo - 1) * pageSize;
+
+//                     // 3️⃣ Fetch paginated results
+//                     const dataQuery = `
+//             SELECT id, user_id, amount, currency, receipt, order_id, order_status, order_created_at, created_at, payment_id
+//             FROM mo_order_details
+//             ${whereSQL}
+//             ORDER BY created_at DESC
+//             LIMIT ? OFFSET ?
+//         `;
+//                     const dataParams = [...queryParams, pageSize, offset];
+
+//                     db.mainDb(dataQuery, dataParams, (err, results) => {
+//                         if (err) {
+//                             console.error('DB fetch error:', err);
+//                             return res.status(500).json({ success: false, message: 'Database error' });
+//                         }
+
+//                         // 4️⃣ Get total count for pagination
+//                         const countQuery = `SELECT COUNT(*) as total FROM mo_order_details ${whereSQL}`;
+//                         db.mainDb(countQuery, queryParams, (err, countResult) => {
+//                             if (err) {
+//                                 console.error('DB count error:', err);
+//                                 return res.status(500).json({ success: false, message: 'Database error' });
+//                             }
+
+//                             const total = countResult[0].total;
+//                             return res.json({
+//                                 success: true,
+//                                 pageNo,
+//                                 pageSize,
+//                                 total,
+//                                 totalPages: Math.ceil(total / pageSize),
+//                                 data: results
+//                             });
+//                         });
+//                     });
+
+//                 } catch (err) {
+//                     console.error('userDepositList error:', err);
+//                     return res.status(500).json({ success: false, message: 'Internal server error' });
+//                 }
+//             } else if (type == 2) { // withdarw history
+
+//                 try {
+//                     const reqData = req.body;
+//                     const userId = req.user.userId;
+//                     // ✅ Validation
+//                     const validate = new Validator(reqData, {
+//                         pageNo: 'integer|min:1',
+//                         pageSize: 'integer|min:1'
+//                     });
+
+//                     const matched = await validate.check();
+//                     if (!matched) {
+//                         let error_message = '';
+//                         Object.keys(validate.errors).forEach((key) => {
+//                             if (validate.errors[key].message) {
+//                                 error_message += (error_message ? ', ' : '') + validate.errors[key].message;
+//                             }
+//                         });
+//                         return res.json({ status: 0, message: error_message });
+//                     }
+
+//                     const page = parseInt(reqData.pageNo) || 1;
+//                     const limit = parseInt(reqData.pageSize) || 10;
+//                     const offset = (page - 1) * limit;
+
+//                     let queryParams = [];
+
+
+//                     const query = `SELECT id, amount, status, reference_id, razorpay_payout_id, created_at razorpay_payout_id FROM mo_user_withdrawals WHERE user_id = ${userId} ORDER BY created_at DESC  LIMIT ? OFFSET ? `;
+
+//                     queryParams.push(limit, offset);
+
+//                     await db.mainDb(query, queryParams, (err, data) => {
+//                         if (err) {
+//                             console.error("Get user list error:", err);
+//                             return res.json({ status: 0, message: "Error fetching user list" });
+//                         }
+
+//                         return res.json({
+//                             status: 1,
+//                             page,
+//                             pageSize: limit,
+//                             totalRecords: data.length,
+//                             data
+//                         });
+//                     });
+
+//                 } catch (err) {
+//                     console.error("getUserList error:", err);
+//                     return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
+//                 }
+//             } else if (type == 3) { // daily roi profit list
+
+//                 try {
+//                     const reqData = req.body;
+//                     const userId = req.user.userId;  // Get the user ID from authenticated user
+
+//                     // ✅ Validation
+//                     const validate = new Validator(reqData, {
+//                         pageNo: 'integer|min:1',
+//                         pageSize: 'integer|min:1'
+//                     });
+
+//                     const matched = await validate.check();
+//                     if (!matched) {
+//                         let error_message = '';
+//                         Object.keys(validate.errors).forEach((key) => {
+//                             if (validate.errors[key].message) {
+//                                 error_message += (error_message ? ', ' : '') + validate.errors[key].message;
+//                             }
+//                         });
+//                         return res.json({ status: 0, message: error_message });
+//                     }
+
+//                     const page = parseInt(reqData.pageNo) || 1;
+//                     const limit = parseInt(reqData.pageSize) || 10;
+//                     const offset = (page - 1) * limit;
+
+//                     let queryParams = [];
+
+//                     // SQL query to fetch daily wallet profits for the user
+//                     const query = `
+//             SELECT 
+//                 wp.profit_amount AS wallet_profit,
+//                 wp.profit_date AS profit_date,
+//                 u.username,
+//                 u.email
+//             FROM 
+//                 mo_wallet_daily_profit wp
+//             JOIN 
+//                 mo_user_info u ON wp.user_id = u.id
+//             WHERE 
+//                 wp.user_id = ?
+//             ORDER BY 
+//                 wp.profit_date DESC
+//             LIMIT ? OFFSET ?
+//         `;
+
+//                     queryParams.push(userId, limit, offset);
+
+//                     // Execute the query
+//                     await db.mainDb(query, queryParams, (err, data) => {
+//                         if (err) {
+//                             console.error("Get user wallet profit error:", err);
+//                             return res.json({ status: 0, message: "Error fetching wallet profit data" });
+//                         }
+
+//                         return res.json({
+//                             status: 1,
+//                             page,
+//                             pageSize: limit,
+//                             totalRecords: data.length,
+//                             data
+//                         });
+//                     });
+
+//                 } catch (err) {
+//                     console.error("userDailyWalletProfit error:", err);
+//                     return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
+//                 }
+//             } else if (type == 4) { // roi history by his reffered users
+
+//                 try {
+//                     const reqData = req.body;
+//                     const userId = req.user.userId;  // Get the user ID from authenticated user
+
+//                     // ✅ Validation
+//                     const validate = new Validator(reqData, {
+//                         pageNo: 'integer|min:1',
+//                         pageSize: 'integer|min:1'
+//                     });
+
+//                     const matched = await validate.check();
+//                     if (!matched) {
+//                         let error_message = '';
+//                         Object.keys(validate.errors).forEach((key) => {
+//                             if (validate.errors[key].message) {
+//                                 error_message += (error_message ? ', ' : '') + validate.errors[key].message;
+//                             }
+//                         });
+//                         return res.json({ status: 0, message: error_message });
+//                     }
+
+//                     const page = parseInt(reqData.pageNo) || 1;
+//                     const limit = parseInt(reqData.pageSize) || 10;
+//                     const offset = (page - 1) * limit;
+
+//                     let queryParams = [];
+
+//                     // SQL query to fetch daily referral profits for the user
+//                     const query = `
+//             SELECT 
+//                 wpr.bonus_amount AS referral_bonus,
+//                 wpr.bonus_date AS bonus_date,
+//                 u.username AS referred_username,
+//                 u.email AS referred_email,
+//                 ref.username AS referrer_username,
+//                 ref.email AS referrer_email
+//             FROM 
+//                 mo_wallet_daily_profit_from_ref wpr
+//             JOIN 
+//                 mo_user_info u ON wpr.referred_user_id = u.id
+//             JOIN 
+//                 mo_user_info ref ON wpr.referrer_id = ref.id
+//             WHERE 
+//                 wpr.referrer_id = ?
+//             ORDER BY 
+//                 wpr.bonus_date DESC
+//             LIMIT ? OFFSET ?
+//         `;
+
+//                     queryParams.push(userId, limit, offset);
+
+//                     // Execute the query
+//                     await db.mainDb(query, queryParams, (err, data) => {
+//                         if (err) {
+//                             console.error("Get user referral profit error:", err);
+//                             return res.json({ status: 0, message: "Error fetching referral profit data" });
+//                         }
+
+//                         return res.json({
+//                             status: 1,
+//                             page,
+//                             pageSize: limit,
+//                             totalRecords: data.length,
+//                             data
+//                         });
+//                     });
+
+//                 } catch (err) {
+//                     console.error("userDailyReferralProfit error:", err);
+//                     return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
+//                 }
+//             } else if (type == 5) { // get wallet req list
+
+//                 try {
+//                     const reqData = req.body;
+//                     const userId = req.user.userId;
+//                     // ✅ Validation
+//                     const validate = new Validator(reqData, {
+//                         pageNo: 'integer|min:1',
+//                         pageSize: 'integer|min:1'
+//                     });
+
+//                     const matched = await validate.check();
+//                     if (!matched) {
+//                         let error_message = '';
+//                         Object.keys(validate.errors).forEach((key) => {
+//                             if (validate.errors[key].message) {
+//                                 error_message += (error_message ? ', ' : '') + validate.errors[key].message;
+//                             }
+//                         });
+//                         return res.json({ status: 0, message: error_message });
+//                     }
+
+//                     const page = parseInt(reqData.pageNo) || 1;
+//                     const limit = parseInt(reqData.pageSize) || 10;
+//                     const offset = (page - 1) * limit;
+
+//                     let queryParams = [];
+
+
+//                     const query = `SELECT * FROM mo_wallet_request WHERE user_id = ${userId} ORDER BY created_at DESC  LIMIT ? OFFSET ? `;
+
+//                     queryParams.push(limit, offset);
+
+//                     await db.mainDb(query, queryParams, (err, data) => {
+//                         if (err) {
+//                             console.error("Get user list error:", err);
+//                             return res.json({ status: 0, message: "Error fetching user list" });
+//                         }
+
+//                         return res.json({
+//                             status: 1,
+//                             page,
+//                             pageSize: limit,
+//                             totalRecords: data.length,
+//                             data
+//                         });
+//                     });
+
+//                 } catch (err) {
+//                     console.error("getUserList error:", err);
+//                     return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
+//                 }
+//             } else {
+//                 return res.json({ status: 0, message: "Type error" });
+//             }
+//         }
+
+
+//     } catch (err) {
+//         console.error("userDailyReferralProfit error:", err);
+//         return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
+//     }
+// };
+
+
+
 exports.transactionHistory = async (req, res) => {
     try {
         const reqData = req.body;
-        const userId = req.user.userId;  // Get the user ID from authenticated user
-        const type = reqData.type
-        // ✅ Validation
+        const userId = req.user.userId;
+
+        // ✅ Main Validation
         const validate = new Validator(reqData, {
-            type: 'integer|min:1'
+            type: 'required|integer|in:1,2,3,4,5',
+            pageNo: 'integer|min:1',
+            pageSize: 'integer|min:1|max:100'
         });
 
         const matched = await validate.check();
         if (!matched) {
             let error_message = '';
-            Object.keys(validate.errors).forEach((key) => {
-                if (validate.errors[key].message) {
-                    error_message += (error_message ? ', ' : '') + validate.errors[key].message;
-                }
+            Object.values(validate.errors).forEach(e => {
+                error_message += (error_message ? ', ' : '') + e.message;
             });
             return res.json({ status: 0, message: error_message });
-        } else {
-
-            if (type == 1) { // deposit history
-
-                try {
-                    // 1️⃣ Input validation
-                    const v = new Validator(req.body, {
-                        status: 'sometimes|integer|in:0,1,2',       // optional
-                        pageNo: 'required|integer|min:1',
-                        pageSize: 'required|integer|min:1|max:100',
-                        search: 'sometimes|string|maxLength:100'
-                    });
-
-                    const matched = await v.check();
-                    if (!matched) {
-                        let error_message = '';
-                        Object.values(v.errors).forEach(e => {
-                            error_message += (error_message ? ', ' : '') + e.message;
-                        });
-                        return res.status(400).json({ success: false, message: error_message });
-                    }
-
-                    // 2️⃣ Extract request values
-                    const userId = req.body.userId // Replace with actual authenticated user ID
-                    const pageNo = parseInt(req.body.pageNo);
-                    const pageSize = parseInt(req.body.pageSize);
-                    const search = req.body.search;
-
-                    let whereClauses = ['user_id = ?'];
-                    let queryParams = [userId];
-
-                    // Optional status filter
-                    if (req.body.status !== undefined) {
-                        const statusMap = { 0: 'created', 1: 'paid', 2: 'failed' };
-                        const status = statusMap[req.body.status];
-                        whereClauses.push('order_status = ?');
-                        queryParams.push(status);
-                    }
-
-                    // Optional search filter
-                    if (search) {
-                        whereClauses.push('(order_id LIKE ? OR receipt LIKE ? OR payment_id LIKE ?)');
-                        const searchValue = `%${search}%`;
-                        queryParams.push(searchValue, searchValue, searchValue);
-                    }
-
-                    const whereSQL = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
-                    const offset = (pageNo - 1) * pageSize;
-
-                    // 3️⃣ Fetch paginated results
-                    const dataQuery = `
-            SELECT id, user_id, amount, currency, receipt, order_id, order_status, order_created_at, created_at, payment_id
-            FROM mo_order_details
-            ${whereSQL}
-            ORDER BY created_at DESC
-            LIMIT ? OFFSET ?
-        `;
-                    const dataParams = [...queryParams, pageSize, offset];
-
-                    db.mainDb(dataQuery, dataParams, (err, results) => {
-                        if (err) {
-                            console.error('DB fetch error:', err);
-                            return res.status(500).json({ success: false, message: 'Database error' });
-                        }
-
-                        // 4️⃣ Get total count for pagination
-                        const countQuery = `SELECT COUNT(*) as total FROM mo_order_details ${whereSQL}`;
-                        db.mainDb(countQuery, queryParams, (err, countResult) => {
-                            if (err) {
-                                console.error('DB count error:', err);
-                                return res.status(500).json({ success: false, message: 'Database error' });
-                            }
-
-                            const total = countResult[0].total;
-                            return res.json({
-                                success: true,
-                                pageNo,
-                                pageSize,
-                                total,
-                                totalPages: Math.ceil(total / pageSize),
-                                data: results
-                            });
-                        });
-                    });
-
-                } catch (err) {
-                    console.error('userDepositList error:', err);
-                    return res.status(500).json({ success: false, message: 'Internal server error' });
-                }
-            } else if (type == 2) { // withdarw history
-
-                try {
-                    const reqData = req.body;
-                    const userId = req.user.userId;
-                    // ✅ Validation
-                    const validate = new Validator(reqData, {
-                        pageNo: 'integer|min:1',
-                        pageSize: 'integer|min:1'
-                    });
-
-                    const matched = await validate.check();
-                    if (!matched) {
-                        let error_message = '';
-                        Object.keys(validate.errors).forEach((key) => {
-                            if (validate.errors[key].message) {
-                                error_message += (error_message ? ', ' : '') + validate.errors[key].message;
-                            }
-                        });
-                        return res.json({ status: 0, message: error_message });
-                    }
-
-                    const page = parseInt(reqData.pageNo) || 1;
-                    const limit = parseInt(reqData.pageSize) || 10;
-                    const offset = (page - 1) * limit;
-
-                    let queryParams = [];
-
-
-                    const query = `SELECT id, amount, status, reference_id, razorpay_payout_id, created_at razorpay_payout_id FROM mo_user_withdrawals WHERE user_id = ${userId} ORDER BY created_at DESC  LIMIT ? OFFSET ? `;
-
-                    queryParams.push(limit, offset);
-
-                    await db.mainDb(query, queryParams, (err, data) => {
-                        if (err) {
-                            console.error("Get user list error:", err);
-                            return res.json({ status: 0, message: "Error fetching user list" });
-                        }
-
-                        return res.json({
-                            status: 1,
-                            page,
-                            pageSize: limit,
-                            totalRecords: data.length,
-                            data
-                        });
-                    });
-
-                } catch (err) {
-                    console.error("getUserList error:", err);
-                    return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
-                }
-            } else if (type == 3) { // daily roi profit list
-
-                try {
-                    const reqData = req.body;
-                    const userId = req.user.userId;  // Get the user ID from authenticated user
-
-                    // ✅ Validation
-                    const validate = new Validator(reqData, {
-                        pageNo: 'integer|min:1',
-                        pageSize: 'integer|min:1'
-                    });
-
-                    const matched = await validate.check();
-                    if (!matched) {
-                        let error_message = '';
-                        Object.keys(validate.errors).forEach((key) => {
-                            if (validate.errors[key].message) {
-                                error_message += (error_message ? ', ' : '') + validate.errors[key].message;
-                            }
-                        });
-                        return res.json({ status: 0, message: error_message });
-                    }
-
-                    const page = parseInt(reqData.pageNo) || 1;
-                    const limit = parseInt(reqData.pageSize) || 10;
-                    const offset = (page - 1) * limit;
-
-                    let queryParams = [];
-
-                    // SQL query to fetch daily wallet profits for the user
-                    const query = `
-            SELECT 
-                wp.profit_amount AS wallet_profit,
-                wp.profit_date AS profit_date,
-                u.username,
-                u.email
-            FROM 
-                mo_wallet_daily_profit wp
-            JOIN 
-                mo_user_info u ON wp.user_id = u.id
-            WHERE 
-                wp.user_id = ?
-            ORDER BY 
-                wp.profit_date DESC
-            LIMIT ? OFFSET ?
-        `;
-
-                    queryParams.push(userId, limit, offset);
-
-                    // Execute the query
-                    await db.mainDb(query, queryParams, (err, data) => {
-                        if (err) {
-                            console.error("Get user wallet profit error:", err);
-                            return res.json({ status: 0, message: "Error fetching wallet profit data" });
-                        }
-
-                        return res.json({
-                            status: 1,
-                            page,
-                            pageSize: limit,
-                            totalRecords: data.length,
-                            data
-                        });
-                    });
-
-                } catch (err) {
-                    console.error("userDailyWalletProfit error:", err);
-                    return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
-                }
-            } else if (type == 4) { // roi history by his reffered users
-
-                try {
-                    const reqData = req.body;
-                    const userId = req.user.userId;  // Get the user ID from authenticated user
-
-                    // ✅ Validation
-                    const validate = new Validator(reqData, {
-                        pageNo: 'integer|min:1',
-                        pageSize: 'integer|min:1'
-                    });
-
-                    const matched = await validate.check();
-                    if (!matched) {
-                        let error_message = '';
-                        Object.keys(validate.errors).forEach((key) => {
-                            if (validate.errors[key].message) {
-                                error_message += (error_message ? ', ' : '') + validate.errors[key].message;
-                            }
-                        });
-                        return res.json({ status: 0, message: error_message });
-                    }
-
-                    const page = parseInt(reqData.pageNo) || 1;
-                    const limit = parseInt(reqData.pageSize) || 10;
-                    const offset = (page - 1) * limit;
-
-                    let queryParams = [];
-
-                    // SQL query to fetch daily referral profits for the user
-                    const query = `
-            SELECT 
-                wpr.bonus_amount AS referral_bonus,
-                wpr.bonus_date AS bonus_date,
-                u.username AS referred_username,
-                u.email AS referred_email,
-                ref.username AS referrer_username,
-                ref.email AS referrer_email
-            FROM 
-                mo_wallet_daily_profit_from_ref wpr
-            JOIN 
-                mo_user_info u ON wpr.referred_user_id = u.id
-            JOIN 
-                mo_user_info ref ON wpr.referrer_id = ref.id
-            WHERE 
-                wpr.referrer_id = ?
-            ORDER BY 
-                wpr.bonus_date DESC
-            LIMIT ? OFFSET ?
-        `;
-
-                    queryParams.push(userId, limit, offset);
-
-                    // Execute the query
-                    await db.mainDb(query, queryParams, (err, data) => {
-                        if (err) {
-                            console.error("Get user referral profit error:", err);
-                            return res.json({ status: 0, message: "Error fetching referral profit data" });
-                        }
-
-                        return res.json({
-                            status: 1,
-                            page,
-                            pageSize: limit,
-                            totalRecords: data.length,
-                            data
-                        });
-                    });
-
-                } catch (err) {
-                    console.error("userDailyReferralProfit error:", err);
-                    return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
-                }
-            } else if (type == 5) { // get wallet req list
-
-                try {
-                    const reqData = req.body;
-                    const userId = req.user.userId;
-                    // ✅ Validation
-                    const validate = new Validator(reqData, {
-                        pageNo: 'integer|min:1',
-                        pageSize: 'integer|min:1'
-                    });
-
-                    const matched = await validate.check();
-                    if (!matched) {
-                        let error_message = '';
-                        Object.keys(validate.errors).forEach((key) => {
-                            if (validate.errors[key].message) {
-                                error_message += (error_message ? ', ' : '') + validate.errors[key].message;
-                            }
-                        });
-                        return res.json({ status: 0, message: error_message });
-                    }
-
-                    const page = parseInt(reqData.pageNo) || 1;
-                    const limit = parseInt(reqData.pageSize) || 10;
-                    const offset = (page - 1) * limit;
-
-                    let queryParams = [];
-
-
-                    const query = `SELECT * FROM mo_wallet_request WHERE user_id = ${userId} ORDER BY created_at DESC  LIMIT ? OFFSET ? `;
-
-                    queryParams.push(limit, offset);
-
-                    await db.mainDb(query, queryParams, (err, data) => {
-                        if (err) {
-                            console.error("Get user list error:", err);
-                            return res.json({ status: 0, message: "Error fetching user list" });
-                        }
-
-                        return res.json({
-                            status: 1,
-                            page,
-                            pageSize: limit,
-                            totalRecords: data.length,
-                            data
-                        });
-                    });
-
-                } catch (err) {
-                    console.error("getUserList error:", err);
-                    return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
-                }
-            } else {
-                return res.json({ status: 0, message: "Type error" });
-            }
         }
 
+        const type = parseInt(reqData.type);
+        const pageNo = parseInt(reqData.pageNo) || 1;
+        const pageSize = parseInt(reqData.pageSize) || 10;
+        const offset = (pageNo - 1) * pageSize;
+
+        let dataQuery = '';
+        let countQuery = '';
+        let params = [];
+
+        // ================= TYPE 1: DEPOSIT =================
+        if (type === 1) {
+
+            dataQuery = `
+                SELECT id, amount, currency, receipt, order_id,
+                       order_status, created_at
+                FROM mo_order_details
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+            `;
+
+            countQuery = `
+                SELECT COUNT(*) as total 
+                FROM mo_order_details 
+                WHERE user_id = ?
+            `;
+
+            params = [userId];
+
+        }
+
+        // ================= TYPE 2: WITHDRAW =================
+        else if (type === 2) {
+
+            dataQuery = `
+                SELECT 
+                    id,
+                    amount,
+                    status,
+                    reference_id,
+                    transaction_id,
+                    proof_image,
+                    admin_remarks,
+                    created_at
+                FROM mo_user_withdrawals
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+            `;
+
+            countQuery = `
+                SELECT COUNT(*) as total 
+                FROM mo_user_withdrawals 
+                WHERE user_id = ?
+            `;
+
+            params = [userId];
+        }
+
+        // ================= TYPE 3: DAILY ROI =================
+        else if (type === 3) {
+
+            dataQuery = `
+                SELECT 
+                    profit_amount,
+                    profit_date
+                FROM mo_wallet_daily_profit
+                WHERE user_id = ?
+                ORDER BY profit_date DESC
+                LIMIT ? OFFSET ?
+            `;
+
+            countQuery = `
+                SELECT COUNT(*) as total 
+                FROM mo_wallet_daily_profit 
+                WHERE user_id = ?
+            `;
+
+            params = [userId];
+        }
+
+        // ================= TYPE 4: REFERRAL ROI =================
+        else if (type === 4) {
+
+            dataQuery = `
+                SELECT 
+                    bonus_amount,
+                    bonus_date,
+                    referred_user_id
+                FROM mo_wallet_daily_profit_from_ref
+                WHERE referrer_id = ?
+                ORDER BY bonus_date DESC
+                LIMIT ? OFFSET ?
+            `;
+
+            countQuery = `
+                SELECT COUNT(*) as total 
+                FROM mo_wallet_daily_profit_from_ref
+                WHERE referrer_id = ?
+            `;
+
+            params = [userId];
+        }
+
+        // ================= TYPE 5: WALLET REQUEST =================
+        else if (type === 5) {
+
+            dataQuery = `
+                SELECT *
+                FROM mo_wallet_request
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+            `;
+
+            countQuery = `
+                SELECT COUNT(*) as total 
+                FROM mo_wallet_request
+                WHERE user_id = ?
+            `;
+
+            params = [userId];
+        }
+
+        // ================= EXECUTE =================
+
+        db.mainDb(countQuery, params, (err, countResult) => {
+            if (err) {
+                console.error(err);
+                return res.json({ status: 0, message: "Error fetching count" });
+            }
+
+            const totalRecords = countResult?.[0]?.total || 0;
+
+            db.mainDb(
+                dataQuery,
+                [...params, pageSize, offset],
+                (err, data) => {
+                    if (err) {
+                        console.error(err);
+                        return res.json({ status: 0, message: "Error fetching data" });
+                    }
+
+                    return res.json({
+                        status: 1,
+                        type,
+                        pageNo,
+                        pageSize,
+                        totalRecords,
+                        totalPages: Math.ceil(totalRecords / pageSize),
+                        data
+                    });
+                }
+            );
+        });
 
     } catch (err) {
-        console.error("userDailyReferralProfit error:", err);
-        return res.json({ status: 0, message: "Something went wrong!..Try again later.." });
+        console.error(err);
+        return res.json({ status: 0, message: "Something went wrong!" });
     }
 };

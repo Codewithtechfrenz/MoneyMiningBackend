@@ -28,6 +28,7 @@ router.post('/requestMoveWalletAmount', helper.app_maintenance, helper.auth, use
 
 
 router.post('/userDepositList', helper.app_maintenance, helper.auth, userController.userDepositList);
+
 router.post('/userWalletRequestList', helper.app_maintenance, helper.auth, userController.userWalletRequestList);
 
 

@@ -1197,11 +1197,97 @@ exports.adminOtp = async (req, res) => {
 
 
 
+// exports.depositList = async (req, res) => {
+//     try {
+//         // 1️⃣ Input validation
+//         const v = new Validator(req.body, {
+//             status: 'sometimes|integer|in:0,1,2',  // Only 0,1,2 allowed
+//             pageNo: 'required|integer|min:1',
+//             pageSize: 'required|integer|min:1|max:100',
+//             search: 'sometimes|string|maxLength:100'
+//         });
+
+//         const matched = await v.check();
+//         if (!matched) {
+//             let error_message = '';
+//             Object.values(v.errors).forEach(e => {
+//                 error_message += (error_message ? ', ' : '') + e.message;
+//             });
+//             return res.status(400).json({ success: false, message: error_message });
+//         }
+
+//         // 2️⃣ Extract values
+//         const pageNo = parseInt(req.body.pageNo);
+//         const pageSize = parseInt(req.body.pageSize);
+//         const search = req.body.search;
+//         let whereClauses = [];
+//         let queryParams = [];
+
+//         // Status mapping: 0=pending, 1=completed, 2=failed
+//         if (req.body.status !== undefined) {
+//             const statusMap = { 0: 'created', 1: 'paid', 2: 'failed' };
+//             const status = statusMap[req.body.status];
+//             whereClauses.push('order_status = ?');
+//             queryParams.push(status);
+//         }
+
+//         // Search by order_id, receipt, payment_id
+//         if (search) {
+//             whereClauses.push('(order_id LIKE ? OR receipt LIKE ? OR payment_id LIKE ?)');
+//             const searchValue = `%${search}%`;
+//             queryParams.push(searchValue, searchValue, searchValue);
+//         }
+
+//         const whereSQL = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+//         const offset = (pageNo - 1) * pageSize;
+
+//         // 3️⃣ Fetch paginated results
+//         const dataQuery = `
+//             SELECT id, user_id, amount, currency, receipt, order_id, order_status, order_created_at, created_at, payment_id
+//             FROM mo_order_details
+//             ${whereSQL}
+//             ORDER BY created_at DESC
+//             LIMIT ? OFFSET ?
+//         `;
+//         const dataParams = [...queryParams, pageSize, offset];
+
+//         db.mainDb(dataQuery, dataParams, (err, results) => {
+//             if (err) {
+//                 console.error('DB fetch error:', err);
+//                 return res.status(500).json({ success: false, message: 'Database error' });
+//             }
+
+//             // 4️⃣ Total count for pagination
+//             const countQuery = `SELECT COUNT(*) as total FROM mo_order_details ${whereSQL}`;
+//             db.mainDb(countQuery, queryParams, (err, countResult) => {
+//                 if (err) {
+//                     console.error('DB count error:', err);
+//                     return res.status(500).json({ success: false, message: 'Database error' });
+//                 }
+
+//                 const total = countResult[0].total;
+//                 return res.json({
+//                     success: true,
+//                     pageNo,
+//                     pageSize,
+//                     total,
+//                     totalPages: Math.ceil(total / pageSize),
+//                     data: results
+//                 });
+//             });
+//         });
+
+//     } catch (err) {
+//         console.error('depositList error:', err);
+//         return res.status(500).json({ success: false, message: 'Internal server error' });
+//     }
+// };
+
+
 exports.depositList = async (req, res) => {
     try {
-        // 1️⃣ Input validation
         const v = new Validator(req.body, {
-            status: 'sometimes|integer|in:0,1,2',  // Only 0,1,2 allowed
+            status: 'sometimes|integer|in:0,1,2',
             pageNo: 'required|integer|min:1',
             pageSize: 'required|integer|min:1|max:100',
             search: 'sometimes|string|maxLength:100'
@@ -1216,56 +1302,70 @@ exports.depositList = async (req, res) => {
             return res.status(400).json({ success: false, message: error_message });
         }
 
-        // 2️⃣ Extract values
         const pageNo = parseInt(req.body.pageNo);
         const pageSize = parseInt(req.body.pageSize);
         const search = req.body.search;
+
         let whereClauses = [];
         let queryParams = [];
 
-        // Status mapping: 0=pending, 1=completed, 2=failed
+        // ✅ FIXED STATUS
         if (req.body.status !== undefined) {
-            const statusMap = { 0: 'created', 1: 'paid', 2: 'failed' };
-            const status = statusMap[req.body.status];
+            const statusMap = {
+                0: 'pending',
+                1: 'paid',
+                2: 'rejected'
+            };
+
             whereClauses.push('order_status = ?');
-            queryParams.push(status);
+            queryParams.push(statusMap[req.body.status]);
         }
 
-        // Search by order_id, receipt, payment_id
+        // ✅ FIXED SEARCH
         if (search) {
-            whereClauses.push('(order_id LIKE ? OR receipt LIKE ? OR payment_id LIKE ?)');
+            whereClauses.push(`
+                (order_id LIKE ? OR receipt LIKE ? OR payment_id LIKE ? OR utr_id LIKE ?)
+            `);
             const searchValue = `%${search}%`;
-            queryParams.push(searchValue, searchValue, searchValue);
+            queryParams.push(searchValue, searchValue, searchValue, searchValue);
         }
 
-        const whereSQL = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+        const whereSQL = whereClauses.length > 0
+            ? 'WHERE ' + whereClauses.join(' AND ')
+            : '';
+
         const offset = (pageNo - 1) * pageSize;
 
-        // 3️⃣ Fetch paginated results
+        // ✅ INCLUDE NEW FIELDS
         const dataQuery = `
-            SELECT id, user_id, amount, currency, receipt, order_id, order_status, order_created_at, created_at, payment_id
+            SELECT 
+                id, user_id, amount, currency, receipt, order_id,
+                order_status, order_created_at, created_at, payment_id,
+                utr_id, proof_image
             FROM mo_order_details
             ${whereSQL}
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
         `;
+
         const dataParams = [...queryParams, pageSize, offset];
 
         db.mainDb(dataQuery, dataParams, (err, results) => {
             if (err) {
-                console.error('DB fetch error:', err);
+                console.error(err);
                 return res.status(500).json({ success: false, message: 'Database error' });
             }
 
-            // 4️⃣ Total count for pagination
             const countQuery = `SELECT COUNT(*) as total FROM mo_order_details ${whereSQL}`;
+
             db.mainDb(countQuery, queryParams, (err, countResult) => {
                 if (err) {
-                    console.error('DB count error:', err);
+                    console.error(err);
                     return res.status(500).json({ success: false, message: 'Database error' });
                 }
 
                 const total = countResult[0].total;
+
                 return res.json({
                     success: true,
                     pageNo,
@@ -1278,10 +1378,11 @@ exports.depositList = async (req, res) => {
         });
 
     } catch (err) {
-        console.error('depositList error:', err);
+        console.error(err);
         return res.status(500).json({ success: false, message: 'Internal server error' });
     }
 };
+
 
 
 
@@ -1667,6 +1768,107 @@ exports.userWalletRequestListAdmin = async (req, res) => {
 // };
 
 
+// exports.userWithdrawListAdmin = async (req, res) => {
+//     try {
+//         const reqData = req.body;
+
+//         // ✅ Validation
+//         const validate = new Validator(reqData, {
+//             pageNo: 'required|integer|min:1',
+//             pageSize: 'required|integer|min:1',
+//             status: 'required|in:pending,approved,rejected,all',
+//             email: 'string'
+//         });
+
+//         const matched = await validate.check();
+//         if (!matched) {
+//             let error_message = '';
+//             Object.keys(validate.errors).forEach((key) => {
+//                 if (validate.errors[key].message) {
+//                     error_message += (error_message ? ', ' : '') + validate.errors[key].message;
+//                 }
+//             });
+//             return res.json({ status: 0, message: error_message });
+//         }
+
+//         const page = parseInt(reqData.pageNo);
+//         const limit = parseInt(reqData.pageSize);
+//         const offset = (page - 1) * limit;
+
+//         let whereConditions = [];
+//         let queryParams = [];
+
+//         // ✅ Status filter
+//         if (reqData.status !== 'all') {
+//             whereConditions.push('w.status = ?');
+//             queryParams.push(reqData.status);
+//         }
+
+//         // ✅ Email filter
+//         if (reqData.email && reqData.email.trim() !== "") {
+//             whereConditions.push('ui.email LIKE ?');
+//             queryParams.push(`%${reqData.email.trim()}%`);
+//         }
+
+//         const whereClause = whereConditions.length > 0
+//             ? 'WHERE ' + whereConditions.join(' AND ')
+//             : '';
+
+//         // ✅ Count Query
+//         const countQuery = `
+//             SELECT COUNT(*) as total
+//             FROM mo_user_withdrawals w
+//             LEFT JOIN mo_user_info ui ON ui.id = w.user_id
+//             ${whereClause}
+//         `;
+
+//         db.mainDb(countQuery, queryParams, (err, countResult) => {
+//             if (err) {
+//                 return res.json({ status: 0, message: "Error fetching count" });
+//             }
+
+//             const totalRecords = countResult[0].total;
+
+//             // ✅ Data Query
+//             const dataQuery = `
+//                 SELECT 
+//                     w.*,
+//                     ui.username,
+//                     ui.email,
+//                     ui.mblno,
+//                     ui.is_kyc_verified,
+//                     ui.is_bank_verified
+//                 FROM mo_user_withdrawals w
+//                 LEFT JOIN mo_user_info ui ON ui.id = w.user_id
+//                 ${whereClause}
+//                 ORDER BY w.created_at DESC
+//                 LIMIT ? OFFSET ?
+//             `;
+
+//             const finalParams = [...queryParams, limit, offset];
+
+//             db.mainDb(dataQuery, finalParams, (err, data) => {
+//                 if (err) {
+//                     return res.json({ status: 0, message: "Error fetching withdraw list" });
+//                 }
+
+//                 return res.json({
+//                     status: 1,
+//                     page,
+//                     pageSize: limit,
+//                     totalRecords,
+//                     totalPages: Math.ceil(totalRecords / limit),
+//                     data
+//                 });
+//             });
+//         });
+
+//     } catch (err) {
+//         return res.json({ status: 0, message: "Something went wrong!" });
+//     }
+// };
+
+
 exports.userWithdrawListAdmin = async (req, res) => {
     try {
         const reqData = req.body;
@@ -1674,31 +1876,29 @@ exports.userWithdrawListAdmin = async (req, res) => {
         // ✅ Validation
         const validate = new Validator(reqData, {
             pageNo: 'required|integer|min:1',
-            pageSize: 'required|integer|min:1',
-            status: 'required|in:pending,approved,rejected,all',
-            email: 'string'
+            pageSize: 'required|integer|min:1|max:100',
+            status: 'sometimes|in:pending,approved,rejected,all',
+            email: 'sometimes|string|maxLength:100'
         });
 
         const matched = await validate.check();
         if (!matched) {
             let error_message = '';
-            Object.keys(validate.errors).forEach((key) => {
-                if (validate.errors[key].message) {
-                    error_message += (error_message ? ', ' : '') + validate.errors[key].message;
-                }
+            Object.values(validate.errors).forEach(e => {
+                error_message += (error_message ? ', ' : '') + e.message;
             });
             return res.json({ status: 0, message: error_message });
         }
 
-        const page = parseInt(reqData.pageNo);
-        const limit = parseInt(reqData.pageSize);
-        const offset = (page - 1) * limit;
+        const pageNo = parseInt(reqData.pageNo);
+        const pageSize = parseInt(reqData.pageSize);
+        const offset = (pageNo - 1) * pageSize;
 
         let whereConditions = [];
         let queryParams = [];
 
-        // ✅ Status filter
-        if (reqData.status !== 'all') {
+        // ✅ Status filter (optional)
+        if (reqData.status && reqData.status !== 'all') {
             whereConditions.push('w.status = ?');
             queryParams.push(reqData.status);
         }
@@ -1709,7 +1909,7 @@ exports.userWithdrawListAdmin = async (req, res) => {
             queryParams.push(`%${reqData.email.trim()}%`);
         }
 
-        const whereClause = whereConditions.length > 0
+        const whereClause = whereConditions.length
             ? 'WHERE ' + whereConditions.join(' AND ')
             : '';
 
@@ -1723,20 +1923,32 @@ exports.userWithdrawListAdmin = async (req, res) => {
 
         db.mainDb(countQuery, queryParams, (err, countResult) => {
             if (err) {
+                console.error(err);
                 return res.json({ status: 0, message: "Error fetching count" });
             }
 
-            const totalRecords = countResult[0].total;
+            const totalRecords = countResult?.[0]?.total || 0;
 
             // ✅ Data Query
             const dataQuery = `
                 SELECT 
-                    w.*,
+                    w.id,
+                    w.user_id,
+                    w.amount,
+                    w.status,
+                    w.reference_id,
+                    w.transaction_id,
+                    w.proof_image,
+                    w.admin_remarks,
+                    w.created_at,
+                    w.updated_at,
+
                     ui.username,
                     ui.email,
                     ui.mblno,
                     ui.is_kyc_verified,
                     ui.is_bank_verified
+
                 FROM mo_user_withdrawals w
                 LEFT JOIN mo_user_info ui ON ui.id = w.user_id
                 ${whereClause}
@@ -1744,25 +1956,27 @@ exports.userWithdrawListAdmin = async (req, res) => {
                 LIMIT ? OFFSET ?
             `;
 
-            const finalParams = [...queryParams, limit, offset];
+            const finalParams = [...queryParams, pageSize, offset];
 
             db.mainDb(dataQuery, finalParams, (err, data) => {
                 if (err) {
+                    console.error(err);
                     return res.json({ status: 0, message: "Error fetching withdraw list" });
                 }
 
                 return res.json({
                     status: 1,
-                    page,
-                    pageSize: limit,
+                    pageNo,
+                    pageSize,
                     totalRecords,
-                    totalPages: Math.ceil(totalRecords / limit),
+                    totalPages: Math.ceil(totalRecords / pageSize),
                     data
                 });
             });
         });
 
     } catch (err) {
+        console.error(err);
         return res.json({ status: 0, message: "Something went wrong!" });
     }
 };
@@ -1941,10 +2155,10 @@ exports.verifyBankAdmin = async (req, res) => {
 
                 return res.json({
                     status: 1,
-                    message: bank_status === 2 
-                        ? "Bank rejected" 
-                        : bank_status === 1 
-                            ? "Bank verified" 
+                    message: bank_status == 2
+                        ? "Bank rejected"
+                        : bank_status == 1
+                            ? "Bank verified"
                             : "Bank status updated",
                     is_bank_verified: bank_status
                 });
@@ -1958,110 +2172,215 @@ exports.verifyBankAdmin = async (req, res) => {
 };
 
 
-exports.approveWithdraw = (req, res) => {
+// exports.approveWithdraw = (req, res) => {
+//     try {
+//         const { withdrawal_id } = req.body;
+//         if (!withdrawal_id) return res.json({ status: 0, message: "Withdrawal ID required" });
+
+//         // 1️⃣ Get withdrawal request
+//         db.mainDb(
+//             `SELECT * FROM mo_user_withdrawals WHERE id=?`,
+//             [withdrawal_id],
+//             (err, withdrawalRows) => {
+//                 if (err) {
+//                     console.error("Withdrawal select error:", err);
+//                     return res.json({ status: 0, message: "Error fetching withdrawal" });
+//                 }
+//                 if (!withdrawalRows.length) return res.json({ status: 0, message: "Withdrawal not found" });
+
+//                 const withdrawal = withdrawalRows[0];
+//                 if (withdrawal.status !== "pending") return res.json({ status: 0, message: "Withdrawal already processed" });
+
+//                 const user_id = withdrawal.user_id;
+//                 const amount = parseFloat(withdrawal.amount);
+
+//                 // 2️⃣ Check hold balance
+//                 db.mainDb(
+//                     `SELECT hold FROM mo_user_wallet WHERE user_id=?`,
+//                     [user_id],
+//                     (err2, walletRows) => {
+//                         if (err2) {
+//                             console.error("Wallet select error:", err2);
+//                             return res.json({ status: 0, message: "Error fetching wallet" });
+//                         }
+//                         if (!walletRows.length) return res.json({ status: 0, message: "Wallet not found" });
+//                         if (parseFloat(walletRows[0].hold) < amount) return res.json({ status: 0, message: "Insufficient hold balance" });
+
+//                         // 3️⃣ Get fund account
+//                         db.mainDb(
+//                             `SELECT fund_account_id FROM mo_bank_details WHERE user_id=? AND bank_status=1`,
+//                             [user_id],
+//                             async (err3, bankRows) => {
+//                                 if (err3) {
+//                                     console.error("Bank select error:", err3);
+//                                     return res.json({ status: 0, message: "Error fetching bank details" });
+//                                 }
+//                                 if (!bankRows.length || !bankRows[0].fund_account_id) {
+//                                     return res.json({ status: 0, message: "No verified fund account found" });
+//                                 }
+
+//                                 const fund_account_id = bankRows[0].fund_account_id;
+
+//                                 // 4️⃣ Razorpay payout
+//                                 let payout;
+//                                 try {
+//                                     payout = await razorpay.payouts.create({
+//                                         account_number: process.env.RAZORPAY_ACCOUNT_NUMBER,
+//                                         fund_account: fund_account_id,
+//                                         amount: amount * 100, // paise
+//                                         currency: "INR",
+//                                         mode: "IMPS",
+//                                         purpose: "payout",
+//                                         queue_if_low_balance: true,
+//                                         reference_id: withdrawal.reference_id,
+//                                         narration: "User Withdrawal"
+//                                     });
+//                                 } catch (rzpErr) {
+//                                     console.error("Razorpay payout error:", rzpErr);
+//                                     const errorMessage = rzpErr?.error?.description || rzpErr?.message || "Razorpay API error";
+
+//                                     return db.mainDb(
+//                                         `UPDATE mo_user_withdrawals SET status='failed', razorpay_status='failed', remarks=?, updated_at=NOW() WHERE id=?`,
+//                                         [errorMessage, withdrawal_id],
+//                                         () => res.json({ status: 0, message: "Razorpay payout failed", error: errorMessage })
+//                                     );
+//                                 }
+
+//                                 // 5️⃣ Update withdrawal status
+//                                 db.mainDb(
+//                                     `UPDATE mo_user_withdrawals SET status='approved', razorpay_payout_id=?, razorpay_status=?, remarks='Payout initiated', updated_at=NOW() WHERE id=?`,
+//                                     [payout.id, payout.status, withdrawal_id],
+//                                     (err4) => {
+//                                         if (err4) {
+//                                             console.error("Withdrawal update error:", err4);
+//                                             return res.json({ status: 0, message: "Error updating withdrawal" });
+//                                         }
+
+//                                         return res.json({
+//                                             status: 1,
+//                                             message: "Withdrawal approved & payout initiated",
+//                                             payout_id: payout.id,
+//                                             razorpay_status: payout.status
+//                                         });
+//                                     }
+//                                 );
+
+//                             }
+//                         );
+
+//                     }
+//                 );
+
+//             }
+//         );
+
+//     } catch (err) {
+//         console.error("approveWithdraw error:", err);
+//         return res.json({ status: 0, message: "Internal server error" });
+//     }
+// };
+
+
+
+
+exports.approveWithdraw = async (req, res) => {
     try {
-        const { withdrawal_id } = req.body;
-        if (!withdrawal_id) return res.json({ status: 0, message: "Withdrawal ID required" });
+        const { withdrawal_id, transaction_id, proof_image, admin_remarks } = req.body;
 
-        // 1️⃣ Get withdrawal request
-        db.mainDb(
-            `SELECT * FROM mo_user_withdrawals WHERE id=?`,
-            [withdrawal_id],
-            (err, withdrawalRows) => {
-                if (err) {
-                    console.error("Withdrawal select error:", err);
-                    return res.json({ status: 0, message: "Error fetching withdrawal" });
-                }
-                if (!withdrawalRows.length) return res.json({ status: 0, message: "Withdrawal not found" });
+        if (!withdrawal_id) {
+            return res.json({ status: 0, message: "Withdrawal ID required" });
+        }
 
-                const withdrawal = withdrawalRows[0];
-                if (withdrawal.status !== "pending") return res.json({ status: 0, message: "Withdrawal already processed" });
+        if (!transaction_id) {
+            return res.json({ status: 0, message: "Transaction ID required" });
+        }
 
-                const user_id = withdrawal.user_id;
-                const amount = parseFloat(withdrawal.amount);
+        if (!proof_image) {
+            return res.json({ status: 0, message: "Proof image required" });
+        }
 
-                // 2️⃣ Check hold balance
-                db.mainDb(
-                    `SELECT hold FROM mo_user_wallet WHERE user_id=?`,
-                    [user_id],
-                    (err2, walletRows) => {
-                        if (err2) {
-                            console.error("Wallet select error:", err2);
-                            return res.json({ status: 0, message: "Error fetching wallet" });
-                        }
-                        if (!walletRows.length) return res.json({ status: 0, message: "Wallet not found" });
-                        if (parseFloat(walletRows[0].hold) < amount) return res.json({ status: 0, message: "Insufficient hold balance" });
+        // 1️⃣ Get withdrawal
+        const withdrawalRows = await new Promise((resolve, reject) => {
+            db.mainDb(
+                `SELECT * FROM mo_user_withdrawals WHERE id=?`,
+                [withdrawal_id],
+                (err, rows) => err ? reject(err) : resolve(rows)
+            );
+        });
 
-                        // 3️⃣ Get fund account
-                        db.mainDb(
-                            `SELECT fund_account_id FROM mo_bank_details WHERE user_id=? AND bank_status=1`,
-                            [user_id],
-                            async (err3, bankRows) => {
-                                if (err3) {
-                                    console.error("Bank select error:", err3);
-                                    return res.json({ status: 0, message: "Error fetching bank details" });
-                                }
-                                if (!bankRows.length || !bankRows[0].fund_account_id) {
-                                    return res.json({ status: 0, message: "No verified fund account found" });
-                                }
+        if (!withdrawalRows.length) {
+            return res.json({ status: 0, message: "Withdrawal not found" });
+        }
 
-                                const fund_account_id = bankRows[0].fund_account_id;
+        const withdrawal = withdrawalRows[0];
 
-                                // 4️⃣ Razorpay payout
-                                let payout;
-                                try {
-                                    payout = await razorpay.payouts.create({
-                                        account_number: process.env.RAZORPAY_ACCOUNT_NUMBER,
-                                        fund_account: fund_account_id,
-                                        amount: amount * 100, // paise
-                                        currency: "INR",
-                                        mode: "IMPS",
-                                        purpose: "payout",
-                                        queue_if_low_balance: true,
-                                        reference_id: withdrawal.reference_id,
-                                        narration: "User Withdrawal"
-                                    });
-                                } catch (rzpErr) {
-                                    console.error("Razorpay payout error:", rzpErr);
-                                    const errorMessage = rzpErr?.error?.description || rzpErr?.message || "Razorpay API error";
+        if (withdrawal.status !== "pending") {
+            return res.json({ status: 0, message: "Already processed" });
+        }
 
-                                    return db.mainDb(
-                                        `UPDATE mo_user_withdrawals SET status='failed', razorpay_status='failed', remarks=?, updated_at=NOW() WHERE id=?`,
-                                        [errorMessage, withdrawal_id],
-                                        () => res.json({ status: 0, message: "Razorpay payout failed", error: errorMessage })
-                                    );
-                                }
+        const user_id = withdrawal.user_id;
+        const amount = parseFloat(withdrawal.amount);
 
-                                // 5️⃣ Update withdrawal status
-                                db.mainDb(
-                                    `UPDATE mo_user_withdrawals SET status='approved', razorpay_payout_id=?, razorpay_status=?, remarks='Payout initiated', updated_at=NOW() WHERE id=?`,
-                                    [payout.id, payout.status, withdrawal_id],
-                                    (err4) => {
-                                        if (err4) {
-                                            console.error("Withdrawal update error:", err4);
-                                            return res.json({ status: 0, message: "Error updating withdrawal" });
-                                        }
+        // 2️⃣ Check hold balance
+        const walletRows = await new Promise((resolve, reject) => {
+            db.mainDb(
+                `SELECT hold FROM mo_user_wallet WHERE user_id=?`,
+                [user_id],
+                (err, rows) => err ? reject(err) : resolve(rows)
+            );
+        });
 
-                                        return res.json({
-                                            status: 1,
-                                            message: "Withdrawal approved & payout initiated",
-                                            payout_id: payout.id,
-                                            razorpay_status: payout.status
-                                        });
-                                    }
-                                );
+        if (!walletRows.length) {
+            return res.json({ status: 0, message: "Wallet not found" });
+        }
 
-                            }
-                        );
+        const hold = parseFloat(walletRows[0].hold);
 
-                    }
-                );
+        if (hold < amount) {
+            return res.json({ status: 0, message: "Insufficient hold balance" });
+        }
 
-            }
-        );
+        const newHold = hold - amount;
+
+        // 3️⃣ Deduct hold balance
+        await new Promise((resolve, reject) => {
+            db.mainDb(
+                `UPDATE mo_user_wallet 
+                 SET hold=?, updated_at=NOW() 
+                 WHERE user_id=?`,
+                [newHold, user_id],
+                (err) => err ? reject(err) : resolve()
+            );
+        });
+
+        // 4️⃣ Update withdrawal (MAIN PART)
+        await new Promise((resolve, reject) => {
+            db.mainDb(
+                `UPDATE mo_user_withdrawals 
+                 SET status='approved',
+                     transaction_id=?,
+                     proof_image=?,
+                     admin_remarks=?,
+                     razorpay_status='manual',
+                     updated_at=NOW()
+                 WHERE id=?`,
+                [
+                    transaction_id,
+                    proof_image,
+                    admin_remarks || 'Manual payout completed',
+                    withdrawal_id
+                ],
+                (err) => err ? reject(err) : resolve()
+            );
+        });
+
+        return res.json({
+            status: 1,
+            message: "Withdrawal approved successfully"
+        });
 
     } catch (err) {
-        console.error("approveWithdraw error:", err);
+        console.error(err);
         return res.json({ status: 0, message: "Internal server error" });
     }
 };
@@ -2070,12 +2389,73 @@ exports.approveWithdraw = (req, res) => {
 
 
 
+exports.rejectWithdraw = async (req, res) => {
+    try {
+        const { withdrawal_id, reason } = req.body;
 
+        if (!withdrawal_id) {
+            return res.json({ status: 0, message: "Withdrawal ID required" });
+        }
 
+        // 1️⃣ Get withdrawal
+        const withdrawalRows = await new Promise((resolve, reject) => {
+            db.mainDb(
+                `SELECT * FROM mo_user_withdrawals WHERE id=?`,
+                [withdrawal_id],
+                (err, rows) => err ? reject(err) : resolve(rows)
+            );
+        });
 
+        if (!withdrawalRows.length) {
+            return res.json({ status: 0, message: "Withdrawal not found" });
+        }
 
+        const withdrawal = withdrawalRows[0];
 
+        if (withdrawal.status !== "pending") {
+            return res.json({ status: 0, message: "Already processed" });
+        }
 
+        const user_id = withdrawal.user_id;
+        const amount = parseFloat(withdrawal.amount);
+
+        // 2️⃣ Refund hold → wallet
+        await new Promise((resolve, reject) => {
+            db.mainDb(
+                `UPDATE mo_user_wallet 
+                 SET hold = hold - ?, 
+                     wallet = wallet + ?, 
+                     updated_at = NOW()
+                 WHERE user_id=?`,
+                [amount, amount, user_id],
+                (err) => err ? reject(err) : resolve()
+            );
+        });
+
+        // 3️⃣ Update withdrawal
+        await new Promise((resolve, reject) => {
+            db.mainDb(
+                `UPDATE mo_user_withdrawals 
+                 SET status='rejected',
+                     admin_remarks=?,
+                     razorpay_status='manual_rejected',
+                     updated_at=NOW()
+                 WHERE id=?`,
+                [reason || 'Rejected by admin', withdrawal_id],
+                (err) => err ? reject(err) : resolve()
+            );
+        });
+
+        return res.json({
+            status: 1,
+            message: "Withdrawal rejected & refunded"
+        });
+
+    } catch (err) {
+        console.error(err);
+        return res.json({ status: 0, message: "Internal server error" });
+    }
+};
 
 
 
