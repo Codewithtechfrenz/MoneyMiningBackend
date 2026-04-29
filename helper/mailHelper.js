@@ -96,7 +96,7 @@ const sendSMSWithTemplate = async (mobile, type, replaceable = {}) => {
                 route: "2",
                 sender: "INSTNE",
                 number: mobile,
-                templateid: "12345678912345678900",
+                templateid: "1407177746179722397",
                 sms: message
             }
         });
