@@ -1080,7 +1080,7 @@ exports.requestMoveWalletAmount = async (req, res) => {
         const wallet = await new Promise((resolve, reject) => {
             db.mainDb(
                 `SELECT main_wallet FROM mo_user_wallet WHERE user_id = ?`,
-                [user_id],
+                [userId],
                 (err, rows) => err ? reject(err) : resolve(rows)
             );
         });
@@ -1096,7 +1096,7 @@ exports.requestMoveWalletAmount = async (req, res) => {
         await new Promise((resolve, reject) => {
             db.mainDb(
                 `INSERT INTO mo_wallet_request (user_id, amount) VALUES (?, ?)`,
-                [user_id, numericAmount],
+                [userId, numericAmount],
                 (err) => err ? reject(err) : resolve()
             );
         });
