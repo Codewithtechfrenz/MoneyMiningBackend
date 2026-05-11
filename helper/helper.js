@@ -43,11 +43,11 @@ helper.app_maintenance = (req, res, next) => {
 helper.auth = (req, res, next) => {
 
     // req.user = decoded; // attach user info
-    req.user = { userId: 24 }
-    req.user.userId = 24
-    console.log("req.user: ", req.user);
-    next(); // ✅ allow request
-    return
+    // req.user = { userId:5 }
+    // req.user.userId =5
+    // console.log("req.user: ", req.user);
+    // next(); // ✅ allow request
+    // return
     try {
 
         const authHeader = req.headers["authorization"];
@@ -77,7 +77,7 @@ helper.auth = (req, res, next) => {
             }
 
             req.user = decoded; // attach user info
-            req.body.userId = decoded.userId;
+             req.body.userId = decoded.userId;
             console.log("req.user: ", req.user);
             next(); // ✅ allow request
         });
