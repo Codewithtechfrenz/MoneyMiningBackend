@@ -73,7 +73,7 @@ app.get("/clearlogs", (req, res) => {
 });
 
 app.use('/', function (req, res) {
-  res.json({ status: 1, message: "Welcome to Money Mining API", version: "2.1" });
+  res.json({ status: 1, message: "Welcome to Money Mining API", version: "2.2" });
 });
 
 app.use(function (req, res, next) {

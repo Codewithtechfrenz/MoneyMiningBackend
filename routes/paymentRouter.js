@@ -171,14 +171,12 @@ router.post(
 // Approve payment
 router.post(
     '/approvePayment',
-    helper.auth,
     paymentsController.approvePayment
 );
 
 // Reject payment
 router.post(
     '/rejectPayment',
-    helper.auth,
     paymentsController.rejectPayment
 );
 
