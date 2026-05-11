@@ -215,7 +215,7 @@ exports.getBankList = async (req, res) => {
 exports.saveKycAndBankDetails = async (req, res) => {
     try {
         const reqData = req.body;
-        const userId = req.user.userId || 5;
+        const userId = req.user.userId;
 
         // ✅ Validate both KYC + Bank fields
         const validate = new Validator(reqData, {
