@@ -1052,7 +1052,7 @@ exports.getTestOtp = async (req, res) => {
 
 exports.requestMoveWalletAmount = async (req, res) => {
     try {
-        const user_id = 9;
+        const userId = req.user.userId;
         const { amount } = req.body;
 
         if (!amount) {
@@ -1222,7 +1222,7 @@ exports.userDepositList = async (req, res) => {
             return res.status(400).json({ status: 0, message: error_message });
         }
 
-        const userId = req.body.userId;
+        const userId = req.user.userId;
         const pageNo = parseInt(req.body.pageNo);
         const pageSize = parseInt(req.body.pageSize);
         const search = req.body.search;

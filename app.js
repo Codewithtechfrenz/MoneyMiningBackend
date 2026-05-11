@@ -98,7 +98,7 @@ app.get('/', function (req, res) {
   res.json({
     status: 1,
     message: "Welcome to Money Mining API",
-    version: "2.1.0"
+    version: "2.2"
   });
 });
 

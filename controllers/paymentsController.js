@@ -74,7 +74,7 @@ const db = require('../models/db');
 exports.createOrder = async (req, res) => {
     try {
         const { amount, utr_id, proof_image } = req.body;
-        const userId = req.body.userId; // Replace with auth user
+        const userId = req.user.userId;
 
         if (!amount || amount <= 0) {
             return res.json({ status: 0, message: "Amount must be greater than 0" });

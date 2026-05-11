@@ -77,6 +77,7 @@ helper.auth = (req, res, next) => {
             }
 
             req.user = decoded; // attach user info
+            req.body.userId = decoded.userId;
             console.log("req.user: ", req.user);
             next(); // ✅ allow request
         });
