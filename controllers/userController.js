@@ -1050,19 +1050,105 @@ exports.getTestOtp = async (req, res) => {
 };
 
 
+// exports.requestMoveWalletAmount = async (req, res) => {
+//     try {
+//         const userId = req.user.userId;
+//         const { amount } = req.body;
+
+//         if (!amount) {
+//             return res.json({ status: 0, message: "Amount is required" });
+//         }
+
+//         if (typeof amount === "string" && amount.includes(",")) {
+//             return res.json({ status: 0, message: "Use dot (.) for decimal" });
+//         }
+//         const amountRegex = /^\d+(\.\d{1,2})?$/;
+//         if (!amountRegex.test(amount)) {
+//             return res.json({
+//                 status: 0,
+//                 message: "Amount must be valid number with max 2 decimal places"
+//             });
+//         }
+
+//         const numericAmount = parseFloat(amount);
+
+//         if (numericAmount < 10) {
+//             return res.json({ status: 0, message: "Minimum amount is 10" });
+//         }
+
+//         // Optional: check main_wallet balance
+//         const wallet = await new Promise((resolve, reject) => {
+//             db.mainDb(
+//                 `SELECT main_wallet FROM mo_user_wallet WHERE user_id = ?`,
+//                 [userId],
+//                 (err, rows) => err ? reject(err) : resolve(rows)
+//             );
+//         });
+
+//         if (!wallet.length) {
+//             return res.json({ status: 0, message: "Wallet not found" });
+//         }
+
+//         if (parseFloat(wallet[0].main_wallet) < numericAmount) {
+//             return res.json({ status: 0, message: "Insufficient balance" });
+//         }
+
+//         await new Promise((resolve, reject) => {
+//             db.mainDb(
+//                 `INSERT INTO mo_wallet_request (user_id, amount) VALUES (?, ?)`,
+//                 [userId, numericAmount],
+//                 (err) => err ? reject(err) : resolve()
+//             );
+//         });
+
+//         return res.json({
+//             status: 1,
+//             message: "Wallet move request submitted successfully"
+//         });
+
+//     } catch (err) {
+//         console.error(err);
+//         return res.json({ status: 0, message: "Internal server error" });
+//     }
+// };
+
+
+
+// ===============================
+// USER REQUEST API
+// Move amount from main_wallet -> hold
+// ===============================
+
+
+// ===============================
+// USER REQUEST API
+// Move amount from wallet -> hold
+// ===============================
+
 exports.requestMoveWalletAmount = async (req, res) => {
     try {
         const userId = req.user.userId;
         const { amount } = req.body;
 
+        // ✅ Validate amount exists
         if (!amount) {
-            return res.json({ status: 0, message: "Amount is required" });
+            return res.json({
+                status: 0,
+                message: "Amount is required"
+            });
         }
 
+        // ✅ Prevent comma decimals
         if (typeof amount === "string" && amount.includes(",")) {
-            return res.json({ status: 0, message: "Use dot (.) for decimal" });
+            return res.json({
+                status: 0,
+                message: "Use dot (.) for decimal"
+            });
         }
+
+        // ✅ Decimal validation
         const amountRegex = /^\d+(\.\d{1,2})?$/;
+
         if (!amountRegex.test(amount)) {
             return res.json({
                 status: 0,
@@ -1072,47 +1158,187 @@ exports.requestMoveWalletAmount = async (req, res) => {
 
         const numericAmount = parseFloat(amount);
 
+        // ✅ Minimum amount check
         if (numericAmount < 10) {
-            return res.json({ status: 0, message: "Minimum amount is 10" });
+            return res.json({
+                status: 0,
+                message: "Minimum amount is 10"
+            });
         }
 
-        // Optional: check main_wallet balance
-        const wallet = await new Promise((resolve, reject) => {
+        // ✅ Fetch wallet
+        const walletResult = await new Promise((resolve, reject) => {
             db.mainDb(
-                `SELECT main_wallet FROM mo_user_wallet WHERE user_id = ?`,
+                `SELECT wallet, hold 
+                 FROM mo_user_wallet 
+                 WHERE user_id = ?`,
                 [userId],
                 (err, rows) => err ? reject(err) : resolve(rows)
             );
         });
 
-        if (!wallet.length) {
-            return res.json({ status: 0, message: "Wallet not found" });
+        if (!walletResult.length) {
+            return res.json({
+                status: 0,
+                message: "Wallet not found"
+            });
         }
 
-        if (parseFloat(wallet[0].main_wallet) < numericAmount) {
-            return res.json({ status: 0, message: "Insufficient balance" });
+        const currentWallet = parseFloat(walletResult[0].wallet || 0);
+        const currentHold = parseFloat(walletResult[0].hold || 0);
+
+        // ✅ Negative safety
+        if (currentWallet < 0 || currentHold < 0) {
+            return res.json({
+                status: 0,
+                message: "Invalid wallet balance detected"
+            });
         }
+
+        // ✅ Balance check
+        if (currentWallet < numericAmount) {
+            return res.json({
+                status: 0,
+                message: "Insufficient wallet balance"
+            });
+        }
+
+        // ✅ Prevent duplicate pending requests
+        const pendingRequest = await new Promise((resolve, reject) => {
+            db.mainDb(
+                `SELECT id 
+                 FROM mo_wallet_request
+                 WHERE user_id = ?
+                 AND status = 'pending'
+                 LIMIT 1`,
+                [userId],
+                (err, rows) => err ? reject(err) : resolve(rows)
+            );
+        });
+
+        if (pendingRequest.length > 0) {
+            return res.json({
+                status: 0,
+                message: "You already have a pending request"
+            });
+        }
+
+        // ===============================
+        // BALANCE CALCULATION
+        // ===============================
+
+        const afterWallet = currentWallet - numericAmount;
+        const afterHold = currentHold + numericAmount;
+
+        if (afterWallet < 0 || afterHold < 0) {
+            return res.json({
+                status: 0,
+                message: "Invalid transaction detected"
+            });
+        }
+
+        // ===============================
+        // UPDATE WALLET
+        // wallet -> hold
+        // ===============================
 
         await new Promise((resolve, reject) => {
             db.mainDb(
-                `INSERT INTO mo_wallet_request (user_id, amount) VALUES (?, ?)`,
+                `UPDATE mo_user_wallet
+                 SET wallet = ?,
+                     hold = ?,
+                     updated_at = NOW()
+                 WHERE user_id = ?`,
+                [afterWallet, afterHold, userId],
+                (err) => err ? reject(err) : resolve()
+            );
+        });
+
+        // ===============================
+        // CREATE REQUEST
+        // ===============================
+
+        const insertRequest = await new Promise((resolve, reject) => {
+            db.mainDb(
+                `INSERT INTO mo_wallet_request
+                (user_id, amount, status, created_at)
+                VALUES (?, ?, 'pending', NOW())`,
                 [userId, numericAmount],
+                (err, result) => err ? reject(err) : resolve(result)
+            );
+        });
+
+        const walletReqId = insertRequest.insertId;
+
+        // ===============================
+        // LOGS
+        // ===============================
+
+        // wallet debit
+        await new Promise((resolve, reject) => {
+            db.mainDb(
+                `INSERT INTO mo_user_wallet_access
+                (user_id, wallet_type, transaction_type, amount,
+                 before_balance, after_balance,
+                 source, reference_id, remarks)
+                 VALUES (?, 'wallet', 'debit', ?, ?, ?, 'api', ?, ?)`,
+                [
+                    userId,
+                    numericAmount,
+                    currentWallet,
+                    afterWallet,
+                    `wallet_req_${walletReqId}`,
+                    'Wallet move request created'
+                ],
+                (err) => err ? reject(err) : resolve()
+            );
+        });
+
+        // hold credit
+        await new Promise((resolve, reject) => {
+            db.mainDb(
+                `INSERT INTO mo_user_wallet_access
+                (user_id, wallet_type, transaction_type, amount,
+                 before_balance, after_balance,
+                 source, reference_id, remarks)
+                 VALUES (?, 'hold', 'credit', ?, ?, ?, 'api', ?, ?)`,
+                [
+                    userId,
+                    numericAmount,
+                    currentHold,
+                    afterHold,
+                    `wallet_req_${walletReqId}`,
+                    'Amount moved to hold'
+                ],
                 (err) => err ? reject(err) : resolve()
             );
         });
 
         return res.json({
             status: 1,
-            message: "Wallet move request submitted successfully"
+            message: "Wallet move request submitted successfully",
+            data: {
+                request_id: walletReqId,
+                wallet: {
+                    before: currentWallet,
+                    after: afterWallet
+                },
+                hold: {
+                    before: currentHold,
+                    after: afterHold
+                }
+            }
         });
 
     } catch (err) {
-        console.error(err);
-        return res.json({ status: 0, message: "Internal server error" });
+        console.error("requestMoveWalletAmount error:", err);
+
+        return res.json({
+            status: 0,
+            message: "Internal server error"
+        });
     }
 };
-
-
 
 
 // exports.userDepositList = async (req, res) => {
@@ -1356,20 +1582,121 @@ exports.userWalletRequestList = async (req, res) => {
 
 
 
+// exports.userWithdrawRequest = async (req, res) => {
+//     try {
+//         const user_id = req.user.userId;
+//         const { amount } = req.body;
+
+//         if (!amount) {
+//             return res.json({ status: 0, message: "Amount is required" });
+//         }
+
+//         if (typeof amount === "string" && amount.includes(",")) {
+//             return res.json({ status: 0, message: "Use dot (.) for decimal" });
+//         }
+
+//         const amountRegex = /^\d+(\.\d{1,2})?$/;
+//         if (!amountRegex.test(amount)) {
+//             return res.json({
+//                 status: 0,
+//                 message: "Amount must be valid number with max 2 decimal places"
+//             });
+//         }
+
+//         const numericAmount = parseFloat(amount);
+
+//         if (numericAmount < 10) {
+//             return res.json({ status: 0, message: "Minimum withdrawal amount is 10" });
+//         }
+
+//         // Get wallet balance
+//         const wallet = await new Promise((resolve, reject) => {
+//             db.mainDb(
+//                 `SELECT wallet, hold FROM mo_user_wallet WHERE user_id = ?`,
+//                 [user_id],
+//                 (err, rows) => err ? reject(err) : resolve(rows)
+//             );
+//         });
+
+//         if (!wallet.length) {
+//             return res.json({ status: 0, message: "Wallet not found" });
+//         }
+
+//         const currentWallet = parseFloat(wallet[0].wallet);
+
+//         if (currentWallet < numericAmount) {
+//             return res.json({ status: 0, message: "Insufficient wallet balance" });
+//         }
+
+//         // Update wallet: move wallet → hold
+//         await new Promise((resolve, reject) => {
+//             db.mainDb(
+//                 `UPDATE mo_user_wallet 
+//                  SET wallet = wallet - ?, 
+//                      hold = hold + ?, 
+//                      updated_at = NOW()
+//                  WHERE user_id = ?`,
+//                 [numericAmount, numericAmount, user_id],
+//                 (err) => err ? reject(err) : resolve()
+//             );
+//         });
+
+//         // Generate reference id
+//         const referenceId = "WD" + Date.now();
+
+//         // Insert withdrawal request
+//         await new Promise((resolve, reject) => {
+//             db.mainDb(
+//                 `INSERT INTO mo_user_withdrawals 
+//                  (user_id, amount, reference_id, status) 
+//                  VALUES (?, ?, ?, 'pending')`,
+//                 [user_id, numericAmount, referenceId],
+//                 (err) => err ? reject(err) : resolve()
+//             );
+//         });
+
+//         return res.json({
+//             status: 1,
+//             message: "Withdraw request submitted successfully",
+//             reference_id: referenceId
+//         });
+
+//     } catch (err) {
+//         console.error(err);
+//         return res.json({ status: 0, message: "Internal server error" });
+//     }
+// };
+
+
+
 exports.userWithdrawRequest = async (req, res) => {
     try {
+
         const user_id = req.user.userId;
         const { amount } = req.body;
 
+        // ===============================
+        // VALIDATION
+        // ===============================
+
         if (!amount) {
-            return res.json({ status: 0, message: "Amount is required" });
+            return res.json({
+                status: 0,
+                message: "Amount is required"
+            });
         }
 
+        // Prevent comma decimal
         if (typeof amount === "string" && amount.includes(",")) {
-            return res.json({ status: 0, message: "Use dot (.) for decimal" });
+            return res.json({
+                status: 0,
+                message: "Use dot (.) for decimal"
+            });
         }
 
+        // Decimal validation
         const amountRegex = /^\d+(\.\d{1,2})?$/;
+
         if (!amountRegex.test(amount)) {
             return res.json({
                 status: 0,
@@ -1379,52 +1706,181 @@ exports.userWithdrawRequest = async (req, res) => {
 
         const numericAmount = parseFloat(amount);
 
+        // Minimum withdrawal
         if (numericAmount < 10) {
-            return res.json({ status: 0, message: "Minimum withdrawal amount is 10" });
+            return res.json({
+                status: 0,
+                message: "Minimum withdrawal amount is 10"
+            });
         }
 
-        // Get wallet balance
-        const wallet = await new Promise((resolve, reject) => {
+        // ===============================
+        // FETCH WALLET
+        // ONLY main_wallet CAN WITHDRAW
+        // ===============================
+
+        const walletResult = await new Promise((resolve, reject) => {
             db.mainDb(
-                `SELECT wallet, hold FROM mo_user_wallet WHERE user_id = ?`,
+                `SELECT main_wallet, hold
+                 FROM mo_user_wallet
+                 WHERE user_id = ?`,
                 [user_id],
                 (err, rows) => err ? reject(err) : resolve(rows)
             );
         });
 
-        if (!wallet.length) {
-            return res.json({ status: 0, message: "Wallet not found" });
+        if (!walletResult.length) {
+            return res.json({
+                status: 0,
+                message: "Wallet not found"
+            });
         }
 
-        const currentWallet = parseFloat(wallet[0].wallet);
+        const currentMainWallet = parseFloat(walletResult[0].main_wallet || 0);
+        const currentHold = parseFloat(walletResult[0].hold || 0);
 
-        if (currentWallet < numericAmount) {
-            return res.json({ status: 0, message: "Insufficient wallet balance" });
+        // ===============================
+        // NEGATIVE SAFETY
+        // ===============================
+
+        if (currentMainWallet < 0 || currentHold < 0) {
+            return res.json({
+                status: 0,
+                message: "Invalid wallet balance detected"
+            });
         }
 
-        // Update wallet: move wallet → hold
+        // ===============================
+        // CHECK BALANCE
+        // ===============================
+
+        if (currentMainWallet < numericAmount) {
+            return res.json({
+                status: 0,
+                message: "Insufficient main wallet balance"
+            });
+        }
+
+        // ===============================
+        // PREVENT MULTIPLE PENDING REQUEST
+        // ===============================
+
+        const pendingRequest = await new Promise((resolve, reject) => {
+            db.mainDb(
+                `SELECT id
+                 FROM mo_user_withdrawals
+                 WHERE user_id = ?
+                 AND status = 'pending'
+                 LIMIT 1`,
+                [user_id],
+                (err, rows) => err ? reject(err) : resolve(rows)
+            );
+        });
+
+        if (pendingRequest.length > 0) {
+            return res.json({
+                status: 0,
+                message: "You already have a pending withdrawal request"
+            });
+        }
+
+        // ===============================
+        // CALCULATE
+        // main_wallet -> hold
+        // ===============================
+
+        const afterMainWallet = currentMainWallet - numericAmount;
+        const afterHold = currentHold + numericAmount;
+
+        // Final safety
+        if (afterMainWallet < 0 || afterHold < 0) {
+            return res.json({
+                status: 0,
+                message: "Invalid transaction detected"
+            });
+        }
+
+        // ===============================
+        // UPDATE WALLET
+        // main_wallet -> hold
+        // ===============================
+
         await new Promise((resolve, reject) => {
             db.mainDb(
-                `UPDATE mo_user_wallet 
-                 SET wallet = wallet - ?, 
-                     hold = hold + ?, 
+                `UPDATE mo_user_wallet
+                 SET main_wallet = ?,
+                     hold = ?,
                      updated_at = NOW()
                  WHERE user_id = ?`,
-                [numericAmount, numericAmount, user_id],
+                [afterMainWallet, afterHold, user_id],
                 (err) => err ? reject(err) : resolve()
             );
         });
 
-        // Generate reference id
+        // ===============================
+        // GENERATE REFERENCE ID
+        // ===============================
+
         const referenceId = "WD" + Date.now();
 
-        // Insert withdrawal request
+        // ===============================
+        // INSERT WITHDRAW REQUEST
+        // ===============================
+
+        const insertWithdraw = await new Promise((resolve, reject) => {
+            db.mainDb(
+                `INSERT INTO mo_user_withdrawals
+                (user_id, amount, reference_id, status, created_at)
+                VALUES (?, ?, ?, 'pending', NOW())`,
+                [user_id, numericAmount, referenceId],
+                (err, result) => err ? reject(err) : resolve(result)
+            );
+        });
+
+        const withdrawId = insertWithdraw.insertId;
+
+        // ===============================
+        // LOGS
+        // ===============================
+
+        // main_wallet debit
         await new Promise((resolve, reject) => {
             db.mainDb(
-                `INSERT INTO mo_user_withdrawals 
-                 (user_id, amount, reference_id, status) 
-                 VALUES (?, ?, ?, 'pending')`,
-                [user_id, numericAmount, referenceId],
+                `INSERT INTO mo_user_wallet_access
+                (user_id, wallet_type, transaction_type,
+                 amount, before_balance, after_balance,
+                 source, reference_id, remarks)
+                 VALUES (?, 'main_wallet', 'debit',
+                 ?, ?, ?, 'api', ?, ?)`,
+                [
+                    user_id,
+                    numericAmount,
+                    currentMainWallet,
+                    afterMainWallet,
+                    referenceId,
+                    'Withdraw request created'
+                ],
+                (err) => err ? reject(err) : resolve()
+            );
+        });
+
+        // hold credit
+        await new Promise((resolve, reject) => {
+            db.mainDb(
+                `INSERT INTO mo_user_wallet_access
+                (user_id, wallet_type, transaction_type,
+                 amount, before_balance, after_balance,
+                 source, reference_id, remarks)
+                 VALUES (?, 'hold', 'credit',
+                 ?, ?, ?, 'api', ?, ?)`,
+                [
+                    user_id,
+                    numericAmount,
+                    currentHold,
+                    afterHold,
+                    referenceId,
+                    'Amount moved to hold for withdrawal'
+                ],
                 (err) => err ? reject(err) : resolve()
             );
         });
@@ -1432,14 +1888,31 @@ exports.userWithdrawRequest = async (req, res) => {
         return res.json({
             status: 1,
             message: "Withdraw request submitted successfully",
-            reference_id: referenceId
+            data: {
+                withdraw_id: withdrawId,
+                reference_id: referenceId,
+                main_wallet: {
+                    before: currentMainWallet,
+                    after: afterMainWallet
+                },
+                hold: {
+                    before: currentHold,
+                    after: afterHold
+                }
+            }
         });
 
     } catch (err) {
-        console.error(err);
-        return res.json({ status: 0, message: "Internal server error" });
+
+        console.error("userWithdrawRequest error:", err);
+
+        return res.json({
+            status: 0,
+            message: "Internal server error"
+        });
     }
 };
+
 
 
 // exports.userWithdrawList = async (req, res) => {

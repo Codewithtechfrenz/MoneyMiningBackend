@@ -1386,11 +1386,167 @@ exports.depositList = async (req, res) => {
 
 
 
+// exports.moveWalletAmount = async (req, res) => {
+//     try {
+//         const reqData = req.body;
+
+//         // ✅ Input validation
+//         const validate = new Validator(reqData, {
+//             user_id: 'required|integer',
+//             amount: 'required|numeric|min:10.00',
+//             wallet_req_id: 'required|integer'
+//         });
+
+//         const matched = await validate.check();
+
+//         if (!matched) {
+//             let error_message = '';
+//             Object.values(validate.errors).forEach(e => {
+//                 error_message += (error_message ? ', ' : '') + e.message;
+//             });
+//             return res.json({ status: 0, message: error_message });
+//         }
+
+//         const { user_id, amount, wallet_req_id } = reqData;
+
+//         // ✅ Decimal validation
+//         const amountRegex = /^\d+(\.\d{1,2})?$/;
+//         if (!amountRegex.test(amount)) {
+//             return res.json({
+//                 status: 0,
+//                 message: "Amount must be valid number with max 2 decimal places"
+//             });
+//         }
+
+//         const numericAmount = parseFloat(amount);
+
+//         // 1️⃣ Check wallet request
+//         const requestResult = await new Promise((resolve, reject) => {
+//             db.mainDb(
+//                 `SELECT * FROM mo_wallet_request WHERE id = ? AND user_id = ?`,
+//                 [wallet_req_id, user_id],
+//                 (err, rows) => err ? reject(err) : resolve(rows)
+//             );
+//         });
+
+//         if (!requestResult.length) {
+//             return res.json({ status: 0, message: "Wallet request not found" });
+//         }
+
+//         const requestData = requestResult[0];
+
+//         console.log("requestData.status: ", requestData.status);
+//         if (requestData.status != 'pending') {
+//             return res.json({ status: 0, message: "Request already processed" });
+//         }
+
+//         if (parseFloat(requestData.amount) !== numericAmount) {
+//             return res.json({ status: 0, message: "Amount mismatch with request" });
+//         }
+
+//         // 2️⃣ Fetch current balances
+//         const walletResult = await new Promise((resolve, reject) => {
+//             db.mainDb(
+//                 `SELECT main_wallet, wallet FROM mo_user_wallet WHERE user_id = ?`,
+//                 [user_id],
+//                 (err, rows) => err ? reject(err) : resolve(rows)
+//             );
+//         });
+
+//         if (!walletResult.length) {
+//             return res.json({ status: 0, message: 'Wallet not found for user' });
+//         }
+
+//         const beforeMain = parseFloat(walletResult[0].main_wallet);
+//         const beforeWallet = parseFloat(walletResult[0].wallet);
+
+//         if (beforeMain < numericAmount) {
+//             return res.json({ status: 0, message: 'Insufficient main_wallet balance' });
+//         }
+
+//         const afterMain = beforeMain - numericAmount;
+//         const afterWallet = beforeWallet + numericAmount;
+
+//         // 3️⃣ Update balances
+//         await new Promise((resolve, reject) => {
+//             db.mainDb(
+//                 `UPDATE mo_user_wallet 
+//                  SET main_wallet = ?, wallet = ?, updated_at = NOW() 
+//                  WHERE user_id = ?`,
+//                 [afterMain, afterWallet, user_id],
+//                 (err) => err ? reject(err) : resolve()
+//             );
+//         });
+
+//         // 4️⃣ Update request status → approved
+//         await new Promise((resolve, reject) => {
+//             db.mainDb(
+//                 `UPDATE mo_wallet_request 
+//                  SET status = 'approved', updated_at = NOW() 
+//                  WHERE id = ?`,
+//                 [wallet_req_id],
+//                 (err) => err ? reject(err) : resolve()
+//             );
+//         });
+
+//         // 5️⃣ Insert logs (optional)
+//         await new Promise((resolve, reject) => {
+//             db.mainDb(
+//                 `INSERT INTO mo_user_wallet_access
+//                 (user_id, wallet_type, transaction_type, amount, before_balance, after_balance, source, reference_id, remarks)
+//                 VALUES (?, 'main_wallet', 'debit', ?, ?, ?, 'api', ?, ?)`,
+//                 [user_id, numericAmount, beforeMain, afterMain, `wallet_req_id_${wallet_req_id}`, 'Moved via request approval'],
+//                 (err) => err ? reject(err) : resolve()
+//             );
+//         });
+
+//         await new Promise((resolve, reject) => {
+//             db.mainDb(
+//                 `INSERT INTO mo_user_wallet_access
+//                 (user_id, wallet_type, transaction_type, amount, before_balance, after_balance, source, reference_id, remarks)
+//                 VALUES (?, 'wallet', 'credit', ?, ?, ?, 'api', ?, ?)`,
+//                 [user_id, numericAmount, beforeWallet, afterWallet, `wallet_req_id_${wallet_req_id}`, 'Received via request approval'],
+//                 (err) => err ? reject(err) : resolve()
+//             );
+//         });
+
+//         return res.json({
+//             status: 1,
+//             message: `Successfully approved request and moved ₹${numericAmount}`,
+//             data: {
+//                 main_wallet: { before: beforeMain, after: afterMain },
+//                 wallet: { before: beforeWallet, after: afterWallet }
+//             }
+//         });
+
+//     } catch (err) {
+//         console.error('Move wallet error:', err);
+//         return res.json({ status: 0, message: 'Internal server error' });
+//     }
+// };
+
+
+// ==========================================
+// ADMIN APPROVE
+// Move amount from hold -> wallet
+// ==========================================
+
+
+
+// =====================================
+// ADMIN APPROVE API
+// hold -> main_wallet
+// =====================================
+
 exports.moveWalletAmount = async (req, res) => {
     try {
+
         const reqData = req.body;
 
-        // ✅ Input validation
+        // ===============================
+        // VALIDATION
+        // ===============================
+
         const validate = new Validator(reqData, {
             user_id: 'required|integer',
             amount: 'required|numeric|min:10.00',
@@ -1400,17 +1556,24 @@ exports.moveWalletAmount = async (req, res) => {
         const matched = await validate.check();
 
         if (!matched) {
+
             let error_message = '';
+
             Object.values(validate.errors).forEach(e => {
                 error_message += (error_message ? ', ' : '') + e.message;
             });
-            return res.json({ status: 0, message: error_message });
+
+            return res.json({
+                status: 0,
+                message: error_message
+            });
         }
 
         const { user_id, amount, wallet_req_id } = reqData;
 
         // ✅ Decimal validation
         const amountRegex = /^\d+(\.\d{1,2})?$/;
+
         if (!amountRegex.test(amount)) {
             return res.json({
                 status: 0,
@@ -1420,92 +1583,185 @@ exports.moveWalletAmount = async (req, res) => {
 
         const numericAmount = parseFloat(amount);
 
-        // 1️⃣ Check wallet request
+        // ===============================
+        // FETCH REQUEST
+        // ===============================
+
         const requestResult = await new Promise((resolve, reject) => {
             db.mainDb(
-                `SELECT * FROM mo_wallet_request WHERE id = ? AND user_id = ?`,
+                `SELECT *
+                 FROM mo_wallet_request
+                 WHERE id = ?
+                 AND user_id = ?`,
                 [wallet_req_id, user_id],
                 (err, rows) => err ? reject(err) : resolve(rows)
             );
         });
 
         if (!requestResult.length) {
-            return res.json({ status: 0, message: "Wallet request not found" });
+            return res.json({
+                status: 0,
+                message: "Wallet request not found"
+            });
         }
 
         const requestData = requestResult[0];
 
-        console.log("requestData.status: ", requestData.status);
-        if (requestData.status != 'pending') {
-            return res.json({ status: 0, message: "Request already processed" });
+        // ===============================
+        // CHECK REQUEST STATUS
+        // ===============================
+
+        if (requestData.status !== 'pending') {
+            return res.json({
+                status: 0,
+                message: "Request already processed"
+            });
         }
+
+        // ===============================
+        // AMOUNT MATCH CHECK
+        // ===============================
 
         if (parseFloat(requestData.amount) !== numericAmount) {
-            return res.json({ status: 0, message: "Amount mismatch with request" });
+            return res.json({
+                status: 0,
+                message: "Amount mismatch with request"
+            });
         }
 
-        // 2️⃣ Fetch current balances
+        // ===============================
+        // FETCH WALLET
+        // ===============================
+
         const walletResult = await new Promise((resolve, reject) => {
             db.mainDb(
-                `SELECT main_wallet, wallet FROM mo_user_wallet WHERE user_id = ?`,
+                `SELECT main_wallet, hold
+                 FROM mo_user_wallet
+                 WHERE user_id = ?`,
                 [user_id],
                 (err, rows) => err ? reject(err) : resolve(rows)
             );
         });
 
         if (!walletResult.length) {
-            return res.json({ status: 0, message: 'Wallet not found for user' });
+            return res.json({
+                status: 0,
+                message: "Wallet not found"
+            });
         }
 
-        const beforeMain = parseFloat(walletResult[0].main_wallet);
-        const beforeWallet = parseFloat(walletResult[0].wallet);
+        const beforeMainWallet = parseFloat(walletResult[0].main_wallet || 0);
+        const beforeHold = parseFloat(walletResult[0].hold || 0);
 
-        if (beforeMain < numericAmount) {
-            return res.json({ status: 0, message: 'Insufficient main_wallet balance' });
+        // ===============================
+        // NEGATIVE SAFETY
+        // ===============================
+
+        if (beforeMainWallet < 0 || beforeHold < 0) {
+            return res.json({
+                status: 0,
+                message: "Invalid wallet balance detected"
+            });
         }
 
-        const afterMain = beforeMain - numericAmount;
-        const afterWallet = beforeWallet + numericAmount;
+        // ===============================
+        // HOLD BALANCE CHECK
+        // ===============================
 
-        // 3️⃣ Update balances
+        if (beforeHold < numericAmount) {
+            return res.json({
+                status: 0,
+                message: "Insufficient hold balance"
+            });
+        }
+
+        // ===============================
+        // CALCULATE
+        // ===============================
+
+        const afterHold = beforeHold - numericAmount;
+        const afterMainWallet = beforeMainWallet + numericAmount;
+
+        // Safety
+        if (afterHold < 0 || afterMainWallet < 0) {
+            return res.json({
+                status: 0,
+                message: "Invalid transaction"
+            });
+        }
+
+        // ===============================
+        // UPDATE WALLET
+        // hold -> main_wallet
+        // ===============================
+
         await new Promise((resolve, reject) => {
             db.mainDb(
-                `UPDATE mo_user_wallet 
-                 SET main_wallet = ?, wallet = ?, updated_at = NOW() 
+                `UPDATE mo_user_wallet
+                 SET hold = ?,
+                     main_wallet = ?,
+                     updated_at = NOW()
                  WHERE user_id = ?`,
-                [afterMain, afterWallet, user_id],
+                [afterHold, afterMainWallet, user_id],
                 (err) => err ? reject(err) : resolve()
             );
         });
 
-        // 4️⃣ Update request status → approved
+        // ===============================
+        // UPDATE REQUEST STATUS
+        // ===============================
+
         await new Promise((resolve, reject) => {
             db.mainDb(
-                `UPDATE mo_wallet_request 
-                 SET status = 'approved', updated_at = NOW() 
+                `UPDATE mo_wallet_request
+                 SET status = 'approved',
+                     updated_at = NOW()
                  WHERE id = ?`,
                 [wallet_req_id],
                 (err) => err ? reject(err) : resolve()
             );
         });
 
-        // 5️⃣ Insert logs (optional)
+        // ===============================
+        // LOGS
+        // ===============================
+
+        // hold debit
         await new Promise((resolve, reject) => {
             db.mainDb(
                 `INSERT INTO mo_user_wallet_access
-                (user_id, wallet_type, transaction_type, amount, before_balance, after_balance, source, reference_id, remarks)
-                VALUES (?, 'main_wallet', 'debit', ?, ?, ?, 'api', ?, ?)`,
-                [user_id, numericAmount, beforeMain, afterMain, `wallet_req_id_${wallet_req_id}`, 'Moved via request approval'],
+                (user_id, wallet_type, transaction_type, amount,
+                 before_balance, after_balance,
+                 source, reference_id, remarks)
+                 VALUES (?, 'hold', 'debit', ?, ?, ?, 'api', ?, ?)`,
+                [
+                    user_id,
+                    numericAmount,
+                    beforeHold,
+                    afterHold,
+                    `wallet_req_${wallet_req_id}`,
+                    'Admin approved move request'
+                ],
                 (err) => err ? reject(err) : resolve()
             );
         });
 
+        // main_wallet credit
         await new Promise((resolve, reject) => {
             db.mainDb(
                 `INSERT INTO mo_user_wallet_access
-                (user_id, wallet_type, transaction_type, amount, before_balance, after_balance, source, reference_id, remarks)
-                VALUES (?, 'wallet', 'credit', ?, ?, ?, 'api', ?, ?)`,
-                [user_id, numericAmount, beforeWallet, afterWallet, `wallet_req_id_${wallet_req_id}`, 'Received via request approval'],
+                (user_id, wallet_type, transaction_type, amount,
+                 before_balance, after_balance,
+                 source, reference_id, remarks)
+                 VALUES (?, 'main_wallet', 'credit', ?, ?, ?, 'api', ?, ?)`,
+                [
+                    user_id,
+                    numericAmount,
+                    beforeMainWallet,
+                    afterMainWallet,
+                    `wallet_req_${wallet_req_id}`,
+                    'Amount credited to main_wallet'
+                ],
                 (err) => err ? reject(err) : resolve()
             );
         });
@@ -1514,16 +1770,29 @@ exports.moveWalletAmount = async (req, res) => {
             status: 1,
             message: `Successfully approved request and moved ₹${numericAmount}`,
             data: {
-                main_wallet: { before: beforeMain, after: afterMain },
-                wallet: { before: beforeWallet, after: afterWallet }
+                hold: {
+                    before: beforeHold,
+                    after: afterHold
+                },
+                main_wallet: {
+                    before: beforeMainWallet,
+                    after: afterMainWallet
+                }
             }
         });
 
     } catch (err) {
-        console.error('Move wallet error:', err);
-        return res.json({ status: 0, message: 'Internal server error' });
+
+        console.error("moveWalletAmount error:", err);
+
+        return res.json({
+            status: 0,
+            message: "Internal server error"
+        });
     }
 };
+
+
 
 
 exports.userWalletRequestListAdmin = async (req, res) => {
@@ -2284,86 +2553,192 @@ exports.verifyBankAdmin = async (req, res) => {
 
 
 exports.approveWithdraw = async (req, res) => {
+
     try {
-        const { withdrawal_id, transaction_id, proof_image, admin_remarks } = req.body;
+
+        const {
+            withdrawal_id,
+            transaction_id,
+            proof_image,
+            admin_remarks
+        } = req.body;
+
+        // ===============================
+        // VALIDATION
+        // ===============================
 
         if (!withdrawal_id) {
-            return res.json({ status: 0, message: "Withdrawal ID required" });
+            return res.json({
+                status: 0,
+                message: "Withdrawal ID required"
+            });
         }
 
         if (!transaction_id) {
-            return res.json({ status: 0, message: "Transaction ID required" });
+            return res.json({
+                status: 0,
+                message: "Transaction ID required"
+            });
         }
 
         if (!proof_image) {
-            return res.json({ status: 0, message: "Proof image required" });
+            return res.json({
+                status: 0,
+                message: "Proof image required"
+            });
         }
 
-        // 1️⃣ Get withdrawal
+        // ===============================
+        // FETCH WITHDRAWAL
+        // ===============================
+
         const withdrawalRows = await new Promise((resolve, reject) => {
+
             db.mainDb(
-                `SELECT * FROM mo_user_withdrawals WHERE id=?`,
+                `SELECT *
+                 FROM mo_user_withdrawals
+                 WHERE id = ?`,
                 [withdrawal_id],
                 (err, rows) => err ? reject(err) : resolve(rows)
             );
+
         });
 
         if (!withdrawalRows.length) {
-            return res.json({ status: 0, message: "Withdrawal not found" });
+
+            return res.json({
+                status: 0,
+                message: "Withdrawal not found"
+            });
         }
 
         const withdrawal = withdrawalRows[0];
 
+        // ===============================
+        // CHECK STATUS
+        // ===============================
+
         if (withdrawal.status !== "pending") {
-            return res.json({ status: 0, message: "Already processed" });
+
+            return res.json({
+                status: 0,
+                message: "Withdrawal already processed"
+            });
         }
 
         const user_id = withdrawal.user_id;
         const amount = parseFloat(withdrawal.amount);
 
-        // 2️⃣ Check hold balance
+        // ===============================
+        // VALIDATE AMOUNT
+        // ===============================
+
+        if (amount <= 0) {
+            return res.json({
+                status: 0,
+                message: "Invalid withdrawal amount"
+            });
+        }
+
+        // ===============================
+        // FETCH USER WALLET
+        // ===============================
+
         const walletRows = await new Promise((resolve, reject) => {
+
             db.mainDb(
-                `SELECT hold FROM mo_user_wallet WHERE user_id=?`,
+                `SELECT main_wallet, hold
+                 FROM mo_user_wallet
+                 WHERE user_id = ?`,
                 [user_id],
                 (err, rows) => err ? reject(err) : resolve(rows)
             );
+
         });
 
         if (!walletRows.length) {
-            return res.json({ status: 0, message: "Wallet not found" });
+
+            return res.json({
+                status: 0,
+                message: "Wallet not found"
+            });
         }
 
-        const hold = parseFloat(walletRows[0].hold);
+        const beforeMainWallet = parseFloat(walletRows[0].main_wallet || 0);
+        const beforeHold = parseFloat(walletRows[0].hold || 0);
 
-        if (hold < amount) {
-            return res.json({ status: 0, message: "Insufficient hold balance" });
+        // ===============================
+        // NEGATIVE SAFETY
+        // ===============================
+
+        if (beforeMainWallet < 0 || beforeHold < 0) {
+
+            return res.json({
+                status: 0,
+                message: "Invalid wallet balance detected"
+            });
         }
 
-        const newHold = hold - amount;
+        // ===============================
+        // HOLD BALANCE CHECK
+        // ===============================
 
-        // 3️⃣ Deduct hold balance
+        if (beforeHold < amount) {
+
+            return res.json({
+                status: 0,
+                message: "Insufficient hold balance"
+            });
+        }
+
+        // ===============================
+        // CALCULATE
+        // hold -> admin payout
+        // ===============================
+
+        const afterHold = beforeHold - amount;
+
+        // Final safety
+        if (afterHold < 0) {
+
+            return res.json({
+                status: 0,
+                message: "Invalid hold calculation"
+            });
+        }
+
+        // ===============================
+        // UPDATE HOLD BALANCE
+        // ===============================
+
         await new Promise((resolve, reject) => {
+
             db.mainDb(
-                `UPDATE mo_user_wallet 
-                 SET hold=?, updated_at=NOW() 
-                 WHERE user_id=?`,
-                [newHold, user_id],
+                `UPDATE mo_user_wallet
+                 SET hold = ?,
+                     updated_at = NOW()
+                 WHERE user_id = ?`,
+                [afterHold, user_id],
                 (err) => err ? reject(err) : resolve()
             );
+
         });
 
-        // 4️⃣ Update withdrawal (MAIN PART)
+        // ===============================
+        // UPDATE WITHDRAWAL STATUS
+        // ===============================
+
         await new Promise((resolve, reject) => {
+
             db.mainDb(
-                `UPDATE mo_user_withdrawals 
-                 SET status='approved',
-                     transaction_id=?,
-                     proof_image=?,
-                     admin_remarks=?,
-                     razorpay_status='manual',
-                     updated_at=NOW()
-                 WHERE id=?`,
+                `UPDATE mo_user_withdrawals
+                 SET status = 'approved',
+                     transaction_id = ?,
+                     proof_image = ?,
+                     admin_remarks = ?,
+                     razorpay_status = 'manual',
+                     updated_at = NOW()
+                 WHERE id = ?`,
                 [
                     transaction_id,
                     proof_image,
@@ -2372,19 +2747,76 @@ exports.approveWithdraw = async (req, res) => {
                 ],
                 (err) => err ? reject(err) : resolve()
             );
+
         });
+
+        // ===============================
+        // WALLET LOGS
+        // ===============================
+
+        // hold debit log
+        await new Promise((resolve, reject) => {
+
+            db.mainDb(
+                `INSERT INTO mo_user_wallet_access
+                (
+                    user_id,
+                    wallet_type,
+                    transaction_type,
+                    amount,
+                    before_balance,
+                    after_balance,
+                    source,
+                    reference_id,
+                    remarks
+                )
+                VALUES
+                (
+                    ?, 'hold', 'debit',
+                    ?, ?, ?, 'admin',
+                    ?, ?
+                )`,
+                [
+                    user_id,
+                    amount,
+                    beforeHold,
+                    afterHold,
+                    withdrawal.reference_id,
+                    'Withdrawal approved by admin'
+                ],
+                (err) => err ? reject(err) : resolve()
+            );
+
+        });
+
+        // ===============================
+        // SUCCESS RESPONSE
+        // ===============================
 
         return res.json({
             status: 1,
-            message: "Withdrawal approved successfully"
+            message: "Withdrawal approved successfully",
+            data: {
+                withdrawal_id: withdrawal_id,
+                transaction_id: transaction_id,
+                amount: amount,
+                hold: {
+                    before: beforeHold,
+                    after: afterHold
+                }
+            }
         });
 
     } catch (err) {
-        console.error(err);
-        return res.json({ status: 0, message: "Internal server error" });
+
+        console.error("approveWithdraw error:", err);
+
+        return res.json({
+            status: 0,
+            message: "Internal server error"
+        });
     }
 };
-
 
 
 
